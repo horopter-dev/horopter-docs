@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readHoropterVersion } from "#lib/horopter-version.ts";
 import { matchOutput } from "#scripts/tutorial/match.ts";
 import {
   defaultTimeout,
@@ -67,13 +68,20 @@ function exitReason(code: number | null, signal: string | null, timedOut?: Phase
 }
 
 /**
- * Runs a bash script in its own process group. The group is killed when the current phase
- * runs past its limit, and when the script exits, so nothing the script started outlives it.
+ * Runs a bash script in its own process group, with the pinned release in its environment.
+ * The group is killed when the current phase runs past its limit, and when the script exits,
+ * so nothing the script started outlives it.
  */
-function runScript(script: string, cwd: string, phaseOf: (output: string) => Phase) {
+function runScript(
+  script: string,
+  cwd: string,
+  horopterVersion: string,
+  phaseOf: (output: string) => Phase,
+) {
   return new Promise<ScriptRun>((resolve, reject) => {
     const child = spawn("bash", ["-c", script], {
       cwd,
+      env: { ...process.env, HOROPTER_VERSION: horopterVersion },
       detached: true,
       stdio: ["ignore", "pipe", "inherit"],
     });
@@ -131,10 +139,17 @@ function firstFailure(steps: Step[], run: ScriptRun, markers: Markers): Failure 
     : { step: stopped, reason: run.reason, output: unfinished };
 }
 
-async function runCleanup(command: string, cwd: string): Promise<CleanupFailure | undefined> {
+async function runCleanup(
+  command: string,
+  cwd: string,
+  horopterVersion: string,
+): Promise<CleanupFailure | undefined> {
   const markers = newMarkers();
   const script = sessionScript([{ command }], markers);
-  const run = await runScript(script, cwd, () => ({ index: 0, seconds: defaultTimeout }));
+  const run = await runScript(script, cwd, horopterVersion, () => ({
+    index: 0,
+    seconds: defaultTimeout,
+  }));
   if (run.ok) {
     return undefined;
   }
@@ -144,10 +159,12 @@ async function runCleanup(command: string, cwd: string): Promise<CleanupFailure 
 /**
  * Runs a tutorial page's run blocks in one bash session, in a throwaway directory, and checks
  * each against its expect block. Each block is limited to its timeout. The page's cleanup
- * command runs afterwards in the same directory, whatever the steps did.
+ * command runs afterwards in the same directory, whatever the steps did. Both see the pinned
+ * release as `HOROPTER_VERSION`.
  *
  * Args:
  *   pagePath: The page's MDX file.
+ *   horopterVersion: The release the docs describe, such as `v0.7.0`.
  *
  * Returns:
  *   The parsed page; the first failure, a mismatched expect block or a block that stopped
@@ -156,13 +173,17 @@ async function runCleanup(command: string, cwd: string): Promise<CleanupFailure 
  * Raises:
  *   Error: the page cannot be read or parsed, or bash cannot be started.
  */
-export async function runTutorial(pagePath: string): Promise<TutorialResult> {
+export async function runTutorial(
+  pagePath: string,
+  horopterVersion: string,
+): Promise<TutorialResult> {
   const tutorial = parseTutorial(readFileSync(pagePath, "utf8"));
   const { steps } = tutorial;
   const markers = newMarkers();
   const workDir = mkdtempSync(join(tmpdir(), "tutorial-"));
   try {
-    const run = await runScript(sessionScript(steps, markers), workDir, (output) => {
+    const script = sessionScript(steps, markers);
+    const run = await runScript(script, workDir, horopterVersion, (output) => {
       const index = completedBlocks(output, markers);
       return { index, seconds: steps[index]?.timeout ?? defaultTimeout };
     });
@@ -172,7 +193,9 @@ export async function runTutorial(pagePath: string): Promise<TutorialResult> {
       result.failure = failure;
     }
     const cleanupFailure =
-      tutorial.cleanup === undefined ? undefined : await runCleanup(tutorial.cleanup, workDir);
+      tutorial.cleanup === undefined
+        ? undefined
+        : await runCleanup(tutorial.cleanup, workDir, horopterVersion);
     if (cleanupFailure !== undefined) {
       result.cleanupFailure = cleanupFailure;
     }
@@ -247,15 +270,17 @@ export function formatReport(pagePath: string, result: TutorialResult): string {
  *
  * Args:
  *   pagePath: The page's MDX file.
+ *   horopterVersion: The release the docs describe, such as `v0.7.0`.
  *
  * Returns:
  *   Whether the steps and the cleanup passed, and the report naming the page.
  */
 export async function checkTutorial(
   pagePath: string,
+  horopterVersion: string,
 ): Promise<{ passed: boolean; report: string }> {
   try {
-    const result = await runTutorial(pagePath);
+    const result = await runTutorial(pagePath, horopterVersion);
     const passed = result.failure === undefined && result.cleanupFailure === undefined;
     return { passed, report: formatReport(pagePath, result) };
   } catch (error) {
@@ -270,10 +295,11 @@ if (import.meta.main) {
     console.error("usage: node scripts/tutorial/run.ts <page.mdx>...");
     process.exitCode = 2;
   }
+  const horopterVersion = readHoropterVersion();
   for (const page of pages) {
     // Pages may share ports and containers, so they run one at a time.
     // oxlint-disable-next-line no-await-in-loop
-    const { passed, report } = await checkTutorial(page);
+    const { passed, report } = await checkTutorial(page, horopterVersion);
     if (passed) {
       process.stdout.write(report);
     } else {

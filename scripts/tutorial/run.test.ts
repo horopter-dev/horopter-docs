@@ -6,6 +6,7 @@ import { checkTutorial, formatReport, runTutorial } from "#scripts/tutorial/run.
 
 const fixtures = join(import.meta.dirname, "fixtures");
 const fence = "```";
+const version = "v9.8.7";
 const created: string[] = [];
 
 afterEach(() => {
@@ -32,13 +33,13 @@ function withCleanup(cleanup: string, body: string[]): string {
 
 describe("runTutorial", () => {
   it("passes the echo fixture, whose variables and directories carry between blocks", async () => {
-    const result = await runTutorial(join(fixtures, "echo.mdx"));
+    const result = await runTutorial(join(fixtures, "echo.mdx"), version);
     expect(result.failure).toBeUndefined();
     expect(result.cleanupFailure).toBeUndefined();
   });
 
   it("fails the wrong-expect fixture at the block whose output differs", async () => {
-    expect((await runTutorial(join(fixtures, "wrong-expect.mdx"))).failure).toEqual({
+    expect((await runTutorial(join(fixtures, "wrong-expect.mdx"), version)).failure).toEqual({
       step: {
         line: 14,
         command: "echo two",
@@ -62,7 +63,7 @@ describe("runTutorial", () => {
       "echo after",
       fence,
     ]);
-    expect((await runTutorial(path)).failure).toEqual({
+    expect((await runTutorial(path, version)).failure).toEqual({
       step: { line: 4, command: "echo partial\necho oops >&2\nfalse\necho after", timeout: 120 },
       reason: "exited with status 1",
       output: ["partial", "oops"],
@@ -71,13 +72,13 @@ describe("runTutorial", () => {
 
   it("runs the steps in a throwaway directory, not where the harness was started", async () => {
     const path = page([`${fence}bash run`, `test "$PWD" != '${process.cwd()}'`, fence]);
-    expect((await runTutorial(path)).failure).toBeUndefined();
+    expect((await runTutorial(path, version)).failure).toBeUndefined();
   });
 
   it("does not run a manual block, and lists it", async () => {
     const marker = join(scratchDir(), "ran");
     const path = page([`${fence}bash manual`, `touch '${marker}'`, fence]);
-    const result = await runTutorial(path);
+    const result = await runTutorial(path, version);
     expect(existsSync(marker)).toBe(false);
     expect(result.failure).toBeUndefined();
     expect(result.tutorial.manual).toEqual([{ line: 1, lang: "bash" }]);
@@ -94,7 +95,7 @@ describe("runTutorial", () => {
       fence,
     ]);
     const started = Date.now();
-    const { failure } = await runTutorial(path);
+    const { failure } = await runTutorial(path, version);
     expect(Date.now() - started).toBeLessThan(5000);
     expect(failure).toEqual({
       step: { line: 1, command: "echo waiting\nsleep 30", timeout: 0.3 },
@@ -112,7 +113,7 @@ describe("runTutorial", () => {
       "sleep 1.2",
       fence,
     ]);
-    expect((await runTutorial(path)).failure).toBeUndefined();
+    expect((await runTutorial(path, version)).failure).toBeUndefined();
   });
 
   it("passes a retry block that succeeds on a later attempt", async () => {
@@ -126,12 +127,12 @@ describe("runTutorial", () => {
       "attempt 3",
       fence,
     ]);
-    expect((await runTutorial(path)).failure).toBeUndefined();
+    expect((await runTutorial(path, version)).failure).toBeUndefined();
   });
 
   it("fails a retry block that never succeeds at its timeout, with its last attempt", async () => {
     const path = page([`${fence}bash run retry=0.05 timeout=0.5`, "echo not yet", "false", fence]);
-    const { failure } = await runTutorial(path);
+    const { failure } = await runTutorial(path, version);
     expect(failure?.reason).toBe("exceeded its timeout of 0.5s");
     expect(failure?.output).toEqual(["not yet"]);
   });
@@ -143,7 +144,7 @@ describe("runTutorial", () => {
       "mkdir work",
       fence,
     ]);
-    const result = await runTutorial(path);
+    const result = await runTutorial(path, version);
     expect(result.failure).toBeUndefined();
     expect(result.cleanupFailure).toBeUndefined();
     expect(existsSync(marker)).toBe(true);
@@ -152,7 +153,7 @@ describe("runTutorial", () => {
   it("runs cleanup after a failing tutorial", async () => {
     const marker = join(scratchDir(), "cleaned");
     const path = withCleanup(`touch ${marker}`, [`${fence}bash run`, "false", fence]);
-    expect((await runTutorial(path)).failure?.reason).toBe("exited with status 1");
+    expect((await runTutorial(path, version)).failure?.reason).toBe("exited with status 1");
     expect(existsSync(marker)).toBe(true);
   });
 
@@ -163,19 +164,40 @@ describe("runTutorial", () => {
       "sleep 30",
       fence,
     ]);
-    expect((await runTutorial(path)).failure?.reason).toBe("exceeded its timeout of 0.2s");
+    expect((await runTutorial(path, version)).failure?.reason).toBe("exceeded its timeout of 0.2s");
     expect(existsSync(marker)).toBe(true);
   });
 
   it("reports a failing cleanup with its output", async () => {
     const path = withCleanup("echo tearing down; exit 3", [`${fence}bash run`, "true", fence]);
-    const result = await runTutorial(path);
+    const result = await runTutorial(path, version);
     expect(result.failure).toBeUndefined();
     expect(result.cleanupFailure).toEqual({
       command: "echo tearing down; exit 3",
       reason: "exited with status 3",
       output: ["tearing down"],
     });
+  });
+
+  it("gives the steps the pinned release as HOROPTER_VERSION", async () => {
+    const path = page([
+      `${fence}bash run`,
+      'echo "pinned $HOROPTER_VERSION"',
+      fence,
+      `${fence}text expect`,
+      `pinned ${version}`,
+      fence,
+    ]);
+    expect((await runTutorial(path, version)).failure).toBeUndefined();
+  });
+
+  it("gives cleanup the pinned release as HOROPTER_VERSION", async () => {
+    const path = withCleanup(`test "$HOROPTER_VERSION" = ${version}`, [
+      `${fence}bash run`,
+      "true",
+      fence,
+    ]);
+    expect((await runTutorial(path, version)).cleanupFailure).toBeUndefined();
   });
 });
 
@@ -272,7 +294,7 @@ describe("formatReport", () => {
 
 describe("checkTutorial", () => {
   it("passes a page that passes, with its report", async () => {
-    expect(await checkTutorial(join(fixtures, "echo.mdx"))).toEqual({
+    expect(await checkTutorial(join(fixtures, "echo.mdx"), version)).toEqual({
       passed: true,
       report: expect.stringMatching(/echo\.mdx: every run block passed\n/),
     });
@@ -280,19 +302,19 @@ describe("checkTutorial", () => {
 
   it("fails a page whose steps fail, naming it", async () => {
     const path = join(fixtures, "wrong-expect.mdx");
-    const { passed, report } = await checkTutorial(path);
+    const { passed, report } = await checkTutorial(path, version);
     expect(passed).toBe(false);
     expect(report).toMatch(new RegExp(`^${RegExp.escape(path)}: run block at line 14:`));
   });
 
   it("fails a page whose cleanup fails", async () => {
     const path = withCleanup("false", []);
-    expect((await checkTutorial(path)).passed).toBe(false);
+    expect((await checkTutorial(path, version)).passed).toBe(false);
   });
 
   it("names the page when the harness cannot read it", async () => {
     const path = page([`${fence}sh run`, "echo hi", fence]);
-    expect(await checkTutorial(path)).toEqual({
+    expect(await checkTutorial(path, version)).toEqual({
       passed: false,
       report:
         `${path}: run block at line 1 is "sh"; run blocks are executed by bash, ` +
@@ -301,7 +323,7 @@ describe("checkTutorial", () => {
   });
 
   it("names the page when it does not exist", async () => {
-    const { passed, report } = await checkTutorial("no/such/page.mdx");
+    const { passed, report } = await checkTutorial("no/such/page.mdx", version);
     expect(passed).toBe(false);
     expect(report).toMatch(/^no\/such\/page\.mdx: ENOENT/);
   });

@@ -59,9 +59,28 @@ line matches one line, and a final `...` line allows any further output.
   directory the session started in, with a 120-second limit. It runs in its own shell, so it
   does not see variables the steps exported. A failing cleanup fails the page.
 
-`tutorials.yaml` runs the harness on every pull request and weekly. It has no tutorial pages
-to run yet, only its two fixtures: `echo.mdx`, which must pass, and `wrong-expect.mdx`, which
-must fail naming its second block.
+## The pinned Horopter version
+
+The docs describe one Horopter release, named in `horopter-version` (e.g. `v0.7.0`). A page
+renders it with `<HoropterVersion/>`, and the harness gives it to steps and `cleanup:` as
+`HOROPTER_VERSION`.
+
+`tutorials.yaml` runs on every pull request, weekly, and on a push to `main` that changes
+`horopter-version`. Its three jobs:
+
+- **Harness fixtures** runs `echo.mdx`, which must pass, and `wrong-expect.mdx`, which must
+  fail naming its second block.
+- **Plan** lists the pages under `content/` that have a `bash run` block, plus the
+  `pull-image.mdx` fixture, which pulls a private image at `$HOROPTER_VERSION`. It also
+  checks that the workflow's `GITHUB_TOKEN` can read `horoctl` at the pinned release.
+- **Tutorial** runs each listed page in its own job, after logging in to GHCR with
+  `GITHUB_TOKEN`. When a pull request from a fork or Dependabot cannot read the image, these
+  jobs are skipped and Plan leaves a notice saying why. Any other run that cannot read it
+  fails Plan, so it cannot pass without testing anything.
+
+While Horopter's images are private, `GITHUB_TOKEN` reads one only if that package's settings
+grant this repository Read under "Manage Actions access". Neither GitHub's REST API nor its
+Terraform provider manages that list, so it is set by hand for each image a tutorial pulls.
 
 ```sh
 pnpm tutorial scripts/tutorial/fixtures/echo.mdx

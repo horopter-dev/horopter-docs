@@ -2,6 +2,9 @@ name: Tutorials
 
 on:
   pull_request:
+  push:
+    branches: [main]
+    paths: [horopter-version]
   schedule:
     - cron: "17 6 * * 1"
   workflow_dispatch:
@@ -10,7 +13,9 @@ permissions: {}
 
 concurrency:
   group: tutorials-${{ github.ref }}
-  cancel-in-progress: true
+  # Only a newer push to a pull request supersedes a run; on main, a pin bump must not cancel
+  # the weekly run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # The harness proves itself on two fixtures: one it must pass and one it must fail.
@@ -43,3 +48,93 @@ jobs:
           fi
           cat report.txt
           grep -F "wrong-expect.mdx: run block at line 14:" report.txt
+
+  # The workflow token can read Horopter's private images once each image's package settings
+  # grant this repository Actions access. A fork or Dependabot pull request may still be
+  # refused, and skips; any other run that is refused fails, having tested nothing: a typo
+  # in the pin, say, or an image never granted.
+  plan:
+    name: Plan
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      registry: ${{ steps.registry.outputs.available }}
+      tutorials: ${{ steps.tutorials.outputs.pages }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check this run can read Horopter's images
+        id: registry
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # A pull request from a fork or Dependabot, whose token may not reach the packages.
+          OUTSIDE_PR: >-
+            ${{ github.event.pull_request.head.repo.fork
+              || github.event.pull_request.user.login == 'dependabot[bot]' }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/horopter-dev/horoctl:$(< horopter-version)"
+          if docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin <<< "$GITHUB_TOKEN" \
+            && docker manifest inspect "$image" > /dev/null; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          elif [ "$OUTSIDE_PR" = true ]; then
+            skipped="This fork or Dependabot pull request cannot read $image, so the tutorials"
+            echo "::notice title=Tutorials skipped::$skipped cannot pull Horopter's private images."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            remedy="Check the tag exists and that the package grants horopter-docs Read under"
+            remedy="$remedy Manage Actions access."
+            echo "::error title=Cannot read Horopter's images::This run cannot read $image. $remedy"
+            exit 1
+          fi
+      # The pull-image fixture is always listed, so the matrix is never empty.
+      - name: List the tutorials
+        id: tutorials
+        shell: bash
+        run: |
+          set -euo pipefail
+          pages=$(
+            {
+              git grep -lE '^```bash run' -- 'content/*.mdx' || [ "$?" -eq 1 ]
+              echo scripts/tutorial/fixtures/pull-image.mdx
+            } | sort | jq -Rnc '[inputs]'
+          )
+          echo "pages=$pages" >> "$GITHUB_OUTPUT"
+          echo "$pages"
+
+  tutorial:
+    name: Tutorial
+    needs: plan
+    if: needs.plan.outputs.registry == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        page: ${{ fromJSON(needs.plan.outputs.tutorials) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          install_args: node pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Log in to GHCR
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin <<< "$GITHUB_TOKEN"
+      - name: Run ${{ matrix.page }}
+        shell: bash
+        env:
+          PAGE: ${{ matrix.page }}
+        run: pnpm --silent tutorial "$PAGE"
