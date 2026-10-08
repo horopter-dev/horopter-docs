@@ -11,8 +11,13 @@ import {
 
 const markers: Markers = { step: "__STEP_test__", attempt: "__ATTEMPT_test__" };
 
+const counter = "n=$(( $(cat count 2>/dev/null || echo 0) + 1 )); echo $n > count";
+
 function run(blocks: SessionBlock[]) {
-  const result = spawnSync("bash", ["-c", sessionScript(blocks, markers)], { encoding: "utf8" });
+  const result = spawnSync("bash", ["-c", sessionScript(blocks, markers)], {
+    encoding: "utf8",
+    env: { NODE_ENV: "test", PATH: process.env["PATH"] ?? "/usr/bin:/bin" },
+  });
   return { status: result.status, ...splitOutput(result.stdout, markers) };
 }
 
@@ -48,7 +53,6 @@ describe("sessionScript", () => {
   });
 
   it("repeats a retry block until it succeeds, keeping only the last attempt's output", () => {
-    const counter = "n=$(( $(cat count 2>/dev/null || echo 0) + 1 )); echo $n > count";
     const result = run([
       { command: 'cd "$(mktemp -d)"' },
       { command: `${counter}\necho "attempt $n"\ntest "$n" -ge 3`, retry: 0.01 },
@@ -57,7 +61,6 @@ describe("sessionScript", () => {
   });
 
   it("fails a retry attempt at its first failing command, not only its last", () => {
-    const counter = "n=$(( $(cat count 2>/dev/null || echo 0) + 1 )); echo $n > count";
     const result = run([
       { command: 'cd "$(mktemp -d)"' },
       { command: `${counter}\ntest "$n" -ge 2\necho "attempt $n"`, retry: 0.01 },

@@ -26,7 +26,7 @@ export interface Tutorial {
   cleanup?: string;
 }
 
-const defaultTimeout = 120;
+export const defaultTimeout = 120;
 
 const processor = createProcessor({ format: "mdx" });
 

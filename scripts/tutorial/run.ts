@@ -3,7 +3,12 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { matchOutput } from "#scripts/tutorial/match.ts";
-import { parseTutorial, type Step, type Tutorial } from "#scripts/tutorial/parse.ts";
+import {
+  defaultTimeout,
+  parseTutorial,
+  type Step,
+  type Tutorial,
+} from "#scripts/tutorial/parse.ts";
 import {
   completedBlocks,
   type Markers,
@@ -11,8 +16,6 @@ import {
   sessionScript,
   splitOutput,
 } from "#scripts/tutorial/session.ts";
-
-const cleanupTimeout = 120;
 
 export interface Failure {
   step: Step;
@@ -43,7 +46,10 @@ interface ScriptRun {
   reason: string;
 }
 
-function killGroup(pid: number): void {
+function killGroup(pid: number | undefined): void {
+  if (pid === undefined) {
+    return;
+  }
   try {
     process.kill(-pid, "SIGKILL");
   } catch (error) {
@@ -84,7 +90,7 @@ function runScript(script: string, cwd: string, phaseOf: (output: string) => Pha
       clearTimeout(timer);
       timer = setTimeout(() => {
         timedOut = phase;
-        killGroup(child.pid ?? 0);
+        killGroup(child.pid);
       }, phase.seconds * 1000);
     };
     child.stdout.setEncoding("utf8");
@@ -98,7 +104,7 @@ function runScript(script: string, cwd: string, phaseOf: (output: string) => Pha
     });
     child.on("exit", () => {
       clearTimeout(timer);
-      killGroup(child.pid ?? 0);
+      killGroup(child.pid);
     });
     child.on("close", (code, signal) => {
       resolve({ output, ok: code === 0, reason: exitReason(code, signal, timedOut) });
@@ -126,13 +132,13 @@ function firstFailure(steps: Step[], run: ScriptRun, markers: Markers): Failure 
 }
 
 async function runCleanup(command: string, cwd: string): Promise<CleanupFailure | undefined> {
-  const script = `set -euo pipefail\nexec 2>&1\n${command}\n`;
-  const run = await runScript(script, cwd, () => ({ index: 0, seconds: cleanupTimeout }));
+  const markers = newMarkers();
+  const script = sessionScript([{ command }], markers);
+  const run = await runScript(script, cwd, () => ({ index: 0, seconds: defaultTimeout }));
   if (run.ok) {
     return undefined;
   }
-  const output = splitOutput(run.output, newMarkers()).unfinished;
-  return { command, reason: run.reason, output };
+  return { command, reason: run.reason, output: splitOutput(run.output, markers).unfinished };
 }
 
 /**
@@ -146,6 +152,9 @@ async function runCleanup(command: string, cwd: string): Promise<CleanupFailure 
  * Returns:
  *   The parsed page; the first failure, a mismatched expect block or a block that stopped
  *   the session; and the cleanup's failure.
+ *
+ * Raises:
+ *   Error: the page cannot be read or parsed, or bash cannot be started.
  */
 export async function runTutorial(pagePath: string): Promise<TutorialResult> {
   const tutorial = parseTutorial(readFileSync(pagePath, "utf8"));
@@ -155,7 +164,7 @@ export async function runTutorial(pagePath: string): Promise<TutorialResult> {
   try {
     const run = await runScript(sessionScript(steps, markers), workDir, (output) => {
       const index = completedBlocks(output, markers);
-      return { index, seconds: steps[index]?.timeout ?? cleanupTimeout };
+      return { index, seconds: steps[index]?.timeout ?? defaultTimeout };
     });
     const result: TutorialResult = { tutorial };
     const failure = firstFailure(steps, run, markers);

@@ -45,11 +45,18 @@ line matches one line, and a final `...` line allows any further output.
 - `` ```bash run retry=5 `` repeats a block every 5 seconds until it succeeds or its timeout
   ends, for a step that waits on something. Each attempt runs in a subshell under `set -e`,
   so a retry block's variables and `cd` do not carry forward; its `expect` block is checked
-  against the attempt that succeeded.
+  against the attempt that succeeded. An attempt succeeds by its exit status, so a readiness
+  check matches exact values with `jq -e`, which exits non-zero on `false` or `null`:
+
+  ```sh
+  kubectl get kustomization app -o json \
+    | jq -e '.status.conditions[] | select(.type == "Ready") | .status == "True"'
+  ```
 - `` ```<lang> manual `` is a step the harness cannot run. It is not run, and the report lists
   it as untested. An `expect` block after it is untested with it.
 - `cleanup:` in the front matter is a command run after the steps, pass or fail, in the
-  directory the session started in, with a 120-second limit. A failing cleanup fails the page.
+  directory the session started in, with a 120-second limit. It runs in its own shell, so it
+  does not see variables the steps exported. A failing cleanup fails the page.
 
 `tutorials.yaml` runs the harness on every pull request and weekly. It has no tutorial pages
 to run yet, only its two fixtures: `echo.mdx`, which must pass, and `wrong-expect.mdx`, which
