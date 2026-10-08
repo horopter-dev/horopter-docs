@@ -36,6 +36,10 @@ prek run --all-files
 meta tag is what keeps the site out of search results: crawlers read `robots.txt` only at a
 host's root, and this one is served under `/horopter-docs/`.
 
+`llms.txt` and `llms-full.txt` give the pages as markdown. `lib/llms.ts` resolves their links
+and Cards to site paths as the build writes them, as the HTML pages resolve them, so a page can
+link with a root path or a file-relative one. The build fails on a link left unresolved.
+
 A push to `main` builds and deploys the site with `docs.yaml`.
 
 ## Tutorials
