@@ -40,56 +40,20 @@ A push to `main` builds and deploys the site with `docs.yaml`.
 
 ## Tutorials
 
-A tutorial's own code blocks are its test. `` ```bash run `` blocks run in page order in one
-bash session, in a throwaway directory, so exported variables and `cd` carry forward. A
-`` ```text expect `` block after a run block must match that block's output, stdout and stderr
-together as a reader sees them, line for line: `...` matches any text within a line, a `...`
-line matches one line, and a final `...` line allows any further output.
-
-- `` ```bash run timeout=300 `` limits a block to 300 seconds; the default is 120.
-- `` ```bash run retry=5 `` repeats a block every 5 seconds until it succeeds or its timeout
-  ends, for a step that waits on something. Each attempt runs in a subshell under `set -e`,
-  so a retry block's variables and `cd` do not carry forward; its `expect` block is checked
-  against the attempt that succeeded. An attempt succeeds by its exit status, so a readiness
-  check matches exact values with `jq -e`, which exits non-zero on `false`, `null` or no
-  input, so a failing command feeding it fails the attempt too:
-
-  ```sh
-  jq -e '.status.conditions[] | select(.type == "Ready") | .status == "True"' \
-    < <(kubectl get kustomization app -o json)
-  ```
-- `` ```<lang> manual `` is a step the harness cannot run. It is not run, and the report lists
-  it as untested. An `expect` block after it is untested with it.
-- `cleanup:` in the front matter is a command run after the steps, pass or fail, in the
-  directory the session started in, with a 120-second limit. It runs in its own shell, so it
-  does not see variables the steps exported. A failing cleanup fails the page.
-
-## The pinned Horopter version
-
-The docs describe one Horopter release, named in `horopter-version` (e.g. `v0.7.0`). A page
-renders it with `<HoropterVersion/>`, and the harness gives it to steps and `cleanup:` as
-`HOROPTER_VERSION`.
-
-`tutorials.yaml` runs on every pull request, weekly, and on a push to `main` that changes
-`horopter-version`. Its three jobs:
-
-- **Harness fixtures** runs `echo.mdx`, which must pass, and `wrong-expect.mdx`, which must
-  fail naming its second block.
-- **Plan** lists the pages under `content/` that have a `bash run` block, plus the
-  `pull-image.mdx` fixture, which pulls a private image at `$HOROPTER_VERSION`. It also
-  checks that the workflow's `GITHUB_TOKEN` can read `horoctl` at the pinned release.
-- **Tutorial** runs each listed page in its own job, after logging in to GHCR with
-  `GITHUB_TOKEN`. When a pull request from a fork or Dependabot cannot read the image, these
-  jobs are skipped and Plan leaves a notice saying why. Any other run that cannot read it
-  fails Plan, so it cannot pass without testing anything.
-
-While Horopter's images are private, `GITHUB_TOKEN` reads one only if that package's settings
-grant this repository Read under "Manage Actions access". Neither GitHub's REST API nor its
-Terraform provider manages that list, so it is set by hand for each image a tutorial pulls.
+A tutorial's own code blocks are its test: `scripts/tutorial/` runs a page's `` ```bash run ``
+blocks and checks their `` ```text expect `` blocks, against the Horopter release named in
+`horopter-version`. `tutorials.yaml` runs every tutorial in CI.
 
 ```sh
 pnpm tutorial scripts/tutorial/fixtures/echo.mdx
 ```
+
+The site's Contributing section documents both halves: the
+[style guide](https://horopter-dev.github.io/horopter-docs/contributing/style-guide/) holds
+the markers and their options, and
+[Testing a tutorial](https://horopter-dev.github.io/horopter-docs/contributing/testing-a-tutorial/)
+holds running them, reading a failure report, bumping the pin, and why fork and Dependabot
+pull requests skip the tutorials.
 
 ## Licence
 

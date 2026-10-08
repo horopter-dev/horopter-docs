@@ -1,0 +1,152 @@
+---
+title: Testing a tutorial
+description: Run tutorials locally, read a failure report, and bump the pinned Horopter release.
+---
+
+CI runs every tutorial against the pinned Horopter release, using the harness in
+`scripts/tutorial/`. The same harness runs on your machine. The markers it reads are in the
+[style guide](./style-guide.mdx).
+
+## Prerequisites
+
+- [mise](https://mise.jdx.dev/), activated in your shell, which installs and selects the Node
+  and pnpm versions pinned in `mise.toml`.
+- Docker, for a tutorial that runs containers.
+- While Horopter's images are private, a login to `ghcr.io` with a GitHub personal access
+  token (classic) that has the `read:packages` scope, for a tutorial that pulls them.
+  `docker login ghcr.io --username <your GitHub username>` asks for the token as its password.
+
+## Steps
+
+### Set up a clone
+
+```bash
+git clone https://github.com/horopter-dev/horopter-docs.git
+cd horopter-docs
+mise install
+pnpm install
+```
+
+### Run one tutorial
+
+Pass the page to `pnpm tutorial`:
+
+```bash
+pnpm --silent tutorial scripts/tutorial/fixtures/echo.mdx
+```
+
+```text
+scripts/tutorial/fixtures/echo.mdx: every run block passed
+scripts/tutorial/fixtures/echo.mdx: untested: manual block at line 57 (bash)
+```
+
+`echo.mdx` is one of the harness's fixtures, under `scripts/tutorial/fixtures/`; tutorial
+pages live under `content/docs/tutorials/`. The page runs in a throwaway directory, which is
+removed afterwards. A passing page's report goes to stdout and a failing page's to stderr. The
+command exits 0 when every page passes, 1 when one fails, and 2 when no page is given.
+Without `--silent`, pnpm also prints the command it runs; with or without it, pnpm ends a
+failing run with an `[ELIFECYCLE] Command failed` line, left out of the reports below.
+
+### Run every tutorial
+
+`pnpm tutorial` takes several pages, runs them one at a time, and reports on each, so one
+failing page does not stop the rest. This runs every tutorial page under `content/`, as CI
+lists them, and does nothing when there are none:
+
+```bash
+git grep -lE '^```bash run' -- 'content/*.mdx' | xargs -r pnpm --silent tutorial
+```
+
+CI also runs `scripts/tutorial/fixtures/pull-image.mdx`, which pulls a private image at the
+pinned release and so needs the `ghcr.io` login above.
+
+### Bump the pinned Horopter version
+
+1. Write the new release tag, such as `v0.8.0`, into `horopter-version`, as the file's only
+   line.
+2. Run every tutorial against it, as above.
+3. Open a pull request.
+
+The tag reaches every page that renders `<HoropterVersion/>` and every step that reads
+`$HOROPTER_VERSION`. The file must hold one tag, `v` and three numbers with an optional
+pre-release suffix, or the build and the harness both stop with an error naming the file.
+
+On the pull request, the Tutorials workflow's Plan job first checks that it can read
+`ghcr.io/horopter-dev/horoctl` at the new tag, and fails if the tag does not exist or the
+package does not grant `horopter-docs` access. Each tutorial then runs against the new release
+in its own job. A push to `main` that changes `horopter-version` runs the workflow again, and
+the docs site, rebuilt on the same push, shows the new tag.
+
+## Reading a failure report
+
+This is the `wrong-expect.mdx` fixture's report, whose second `expect` block is wrong:
+
+```text
+scripts/tutorial/fixtures/wrong-expect.mdx: run block at line 14: line 1: expected "three", got "two"
+  command:
+    echo two
+  expected (expect block at line 18):
+    three
+  output:
+    two
+```
+
+The first line names the page, the `run` block that failed by the line its fence is on, and
+why. Below it are the block's command, its `expect` block with that block's line, and what the
+block printed. The report names only the first failing block. The reason is one of:
+
+- `line N: expected "…", got "…"`: an output line does not match.
+- `line N: expected "…", but the output ended`: the block printed fewer lines than its
+  `expect` block holds.
+- `line N: unexpected "…"`: the block printed more lines, and its `expect` block has no final
+  `...` line.
+- `exited with status N`, `killed by SIGNAL`, or `exceeded its timeout of Ns`: the block
+  stopped the session. Its output is what it printed before stopping, and for a `retry` block
+  that of its last attempt that printed anything.
+
+Here the `pull-image.mdx` fixture ran without a `ghcr.io` login:
+
+```text
+scripts/tutorial/fixtures/pull-image.mdx: run block at line 10: exited with status 1
+  command:
+    docker pull --quiet "ghcr.io/horopter-dev/horoctl:$HOROPTER_VERSION"
+  expected (expect block at line 14):
+    ghcr.io/horopter-dev/horoctl:v...
+  output:
+    Error response from daemon: error from registry: unauthorized
+    unauthorized
+```
+
+A line `page: untested: manual block at line N (lang)` lists each `manual` block, pass or
+fail. A failing `cleanup:` adds `page: cleanup` and its reason, with the command and its
+output. A page the harness cannot read, such as one with a `run` block that is not bash, gets
+one line naming the page and what is wrong with it.
+
+## What CI runs
+
+The Tutorials workflow, `.github/workflows/tutorials.yaml`, runs on every pull request, weekly,
+on a push to `main` that changes `horopter-version`, and when started by hand. Its three jobs:
+
+- **Harness fixtures** runs `echo.mdx`, which must pass and list its `manual` block as
+  untested, and `wrong-expect.mdx`, which must fail naming its second `run` block.
+- **Plan** lists the pages under `content/` with a line starting `` ```bash run ``, plus
+  `pull-image.mdx`, and checks that the run can read Horopter's images.
+- **Tutorial** runs each listed page in its own job, after logging in to `ghcr.io` with the
+  workflow's `GITHUB_TOKEN`.
+
+The weekly run catches drift from outside this repository, such as an image the tutorials pull
+changing under the same tag.
+
+## Why fork and Dependabot pull requests skip the tutorials
+
+While Horopter's images are private, the workflow's `GITHUB_TOKEN` reads one only if that
+image's package settings grant `horopter-docs` Read under "Manage Actions access". Neither
+GitHub's REST API nor its Terraform provider manages that list, so the grant is made by hand,
+once for each image a tutorial pulls. A pull
+request from a fork or from Dependabot runs with a token that may not reach the packages at
+all. When such a run cannot read the image, Plan leaves a "Tutorials skipped" notice and the
+Tutorial jobs are skipped; the Harness fixtures job still runs. Any other run that cannot read
+the image fails Plan, so a run cannot pass having tested nothing.
+
+Skipping those pull requests costs little. A dependency bump changes the site's toolchain, not
+the shell steps a tutorial runs, and the weekly run on `main` still runs every tutorial.
