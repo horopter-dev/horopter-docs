@@ -68,6 +68,6 @@ describe.each(pages)("%s", (page) => {
 
   it("renders <HoropterVersion/> if it has a bash run block", () => {
     const tutorial = parseTutorial(readFileSync(page, "utf8")).steps.length > 0;
-    expect(tutorial && !rendersHoropterVersion(page)).toBe(false);
+    expect(!tutorial || rendersHoropterVersion(page), "a tutorial states its release").toBe(true);
   });
 });

@@ -10,8 +10,8 @@ heading shape, and stop. This page is an explainer, the second archetype below.
 
 ### Procedure
 
-A recipe the reader follows in order: every tutorial, every how-to page, and every contributing
-page except this one.
+A recipe the reader follows in order: every tutorial, every how-to page, and "Testing a
+tutorial".
 
 Heading shape: a group heading (`## Steps`, or whatever names the group) followed by
 unnumbered `### Title` sub-headings. The order is the heading sequence, so a heading is the
@@ -35,7 +35,7 @@ A how-to page has this section order:
 
 A tutorial has `## Prerequisites`, then `## Steps` with unnumbered `###` sub-headings, then
 any trailing sections such as `## What's next?`. It has no `## Goal`: its title and
-introduction frame it.
+introduction frame it. A contributing page has the same shape, without the version line.
 
 ### Explainer
 
@@ -56,8 +56,8 @@ empty.
 
 ## Heading rules
 
-Three rules apply to every archetype. `pnpm test` fails on a page under `content/` with an H1
-in its body, or with a heading that starts with a number, `Step N` or `Option N`.
+Three rules apply to every archetype. `pnpm test` fails on a page under `content/docs/` with
+an H1 in its body, or with a heading that starts `N.`, `Step N` or `Option N`.
 
 ### No H1 in the body
 
@@ -99,29 +99,29 @@ page. This site adds one, `<HoropterVersion/>`; see "The version line" below.
 ## Runnable steps
 
 A tutorial's own code blocks are its test. The harness in `scripts/tutorial/` parses a page
-with the MDX parser the site uses, so what it runs is what the reader sees, and CI runs every
-page under `content/` with a `bash run` block. A marker is a word after a block's language, on
-the opening fence. Fence marked blocks with backticks: CI finds tutorials by a line starting
-`` ```bash run ``.
+with the MDX parser the site uses, so what it runs is what the reader sees. A marker is a word
+after a block's language, on the opening fence. CI finds tutorials by a line starting
+`` ```bash run ``, so open every `run` block with exactly that, options after it, fenced with
+backticks and not indented.
 
-A block with no marker is shown and never run. A step the reader is asked to do is therefore
-either `run` or `manual`, never unmarked, so nothing a reader does goes untested without the
-report saying so.
+A block with no marker is shown and never run, and the report does not mention it. A step the
+reader is asked to do is therefore either `run` or `manual`, never unmarked, so the report
+lists every step it did not run.
 
 ### `run`
 
 `` ```bash run `` blocks run in page order in one bash session, under `set -euo pipefail`, in a
 throwaway directory. Variables a block exports and directories it enters carry to later
 blocks, as they do for the reader, and stderr joins stdout in the order they were written. A
-block that exits non-zero stops the session and fails the page. Only bash blocks run; a block
-of any other language marked `run` fails the page.
+block that exits non-zero stops the session and fails the page, and the blocks after it do
+not run. Only bash blocks run; a block of any other language marked `run` fails the page.
 
 Two options follow `run` on the fence, each a positive number of seconds; any other value
 fails the page.
 
 | option | default | effect |
 | --- | --- | --- |
-| `timeout=<seconds>` | 120 | The block's limit. When it ends, the session is killed with everything it started, and the page fails at this block. |
+| `timeout=<seconds>` | 120 | The block's limit. When it ends, the session's processes are killed and the page fails at this block. A container a step started keeps running; remove it with `cleanup:`. |
 | `retry=<seconds>` | none | Repeats the block at this interval until an attempt succeeds or its timeout ends, for a step that waits on something. |
 
 For example, `` ```bash run timeout=300 retry=5 `` retries every five seconds for up to five
@@ -130,8 +130,7 @@ minutes.
 Each `retry` attempt runs in a subshell under `set -e`, so a retried block's variables and
 `cd` do not carry forward. Its `expect` block is checked against the attempt that succeeded.
 An attempt succeeds by its exit status, so a readiness check matches exact values with
-`jq -e`, which exits non-zero on `false`, `null` or no input. Feeding `jq` through process
-substitution rather than a pipe lets a failing command fail the attempt too:
+`jq -e`, which exits non-zero on `false`, `null` or no input:
 
 ```bash
 jq -e '.status.conditions[] | select(.type == "Ready") | .status == "True"' \
@@ -141,15 +140,18 @@ jq -e '.status.conditions[] | select(.type == "Ready") | .status == "True"' \
 ### `expect`
 
 A `` ```text expect `` block after a `run` block is that block's output, as the reader sees
-it, line for line:
+it, line for line. Unmarked blocks between the two do not separate them; a `manual` block
+does. The harness reads only the `expect` marker, not the language, so write `text`.
 
 - `...` within a line matches any text in that line.
 - A line of only `...` matches exactly one line.
 - A final `...` line allows any further output. Without it, an extra line fails the page.
 - An empty `expect` block allows no output.
 
-A `run` block without an `expect` block is checked only by its exit status. A `run` block has
-at most one `expect` block, and an `expect` block before the first `run` block fails the page.
+A mismatch fails the page but does not stop the session: the blocks after it still run, and
+the report names the first block that failed. A `run` block without an `expect` block is
+checked only by its exit status. A `run` block has at most one `expect` block, and an `expect`
+block before the first `run` block fails the page.
 
 ### `manual`
 
@@ -188,7 +190,7 @@ rendering `<HoropterVersion/>` in its introduction:
 Each step below is tested against Horopter <HoropterVersion/>.
 ```
 
-`pnpm test` fails on a page under `content/` with a `bash run` block that does not render
-it. Steps and `cleanup:` see the same release as `$HOROPTER_VERSION`, so a step names an image
-as `ghcr.io/horopter-dev/horoctl:$HOROPTER_VERSION` rather than writing the tag out, and a bump
-to `horopter-version` changes the page and its test together.
+`pnpm test` fails on a page under `content/docs/` with a `bash run` block that does not render
+it anywhere. Steps and `cleanup:` see the same release as `$HOROPTER_VERSION`, so a step names
+an image as `ghcr.io/horopter-dev/horoctl:$HOROPTER_VERSION` rather than writing the tag out,
+and a bump to `horopter-version` changes the page and its test together.

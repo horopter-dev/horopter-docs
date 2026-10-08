@@ -9,8 +9,8 @@ CI runs every tutorial against the pinned Horopter release, using the harness in
 
 ## Prerequisites
 
-- [mise](https://mise.jdx.dev/), which installs the Node and pnpm versions pinned in
-  `mise.toml`.
+- [mise](https://mise.jdx.dev/), activated in your shell, which installs and selects the Node
+  and pnpm versions pinned in `mise.toml`.
 - Docker, for a tutorial that runs containers.
 - While Horopter's images are private, a login to `ghcr.io` with a GitHub personal access
   token (classic) that has the `read:packages` scope, for a tutorial that pulls them.
@@ -20,9 +20,12 @@ CI runs every tutorial against the pinned Horopter release, using the harness in
 
 ### Set up a clone
 
-1. `git clone https://github.com/horopter-dev/horopter-docs.git && cd horopter-docs`
-2. `mise install`
-3. `pnpm install`
+```bash
+git clone https://github.com/horopter-dev/horopter-docs.git
+cd horopter-docs
+mise install
+pnpm install
+```
 
 ### Run one tutorial
 
@@ -39,15 +42,16 @@ scripts/tutorial/fixtures/echo.mdx: untested: manual block at line 57 (bash)
 
 `echo.mdx` is one of the harness's fixtures, under `scripts/tutorial/fixtures/`; tutorial
 pages live under `content/docs/tutorials/`. The page runs in a throwaway directory, which is
-removed afterwards. The command exits 0 when the page passes, 1 when it fails, and 2 when no
-page is given. Without `--silent`, pnpm also prints the command it runs; with or without it,
-pnpm ends a failing run with an `[ELIFECYCLE] Command failed` line, left out of the reports
-below.
+removed afterwards. A passing page's report goes to stdout and a failing page's to stderr. The
+command exits 0 when every page passes, 1 when one fails, and 2 when no page is given.
+Without `--silent`, pnpm also prints the command it runs; with or without it, pnpm ends a
+failing run with an `[ELIFECYCLE] Command failed` line, left out of the reports below.
 
 ### Run every tutorial
 
 `pnpm tutorial` takes several pages, runs them one at a time, and reports on each, so one
-failing page does not stop the rest. This runs every page CI lists as a tutorial:
+failing page does not stop the rest. This runs every tutorial page under `content/`, as CI
+lists them, and does nothing when there are none:
 
 ```bash
 git grep -lE '^```bash run' -- 'content/*.mdx' | xargs -r pnpm --silent tutorial
@@ -75,8 +79,7 @@ the docs site, rebuilt on the same push, shows the new tag.
 
 ## Reading a failure report
 
-A failing page writes its report to stderr. This is the `wrong-expect.mdx` fixture, whose
-second `expect` block is wrong:
+This is the `wrong-expect.mdx` fixture's report, whose second `expect` block is wrong:
 
 ```text
 scripts/tutorial/fixtures/wrong-expect.mdx: run block at line 14: line 1: expected "three", got "two"
@@ -124,8 +127,8 @@ one line naming the page and what is wrong with it.
 The Tutorials workflow, `.github/workflows/tutorials.yaml`, runs on every pull request, weekly,
 on a push to `main` that changes `horopter-version`, and when started by hand. Its three jobs:
 
-- **Harness fixtures** runs `echo.mdx`, which must pass, and `wrong-expect.mdx`, which must
-  fail naming its second `run` block.
+- **Harness fixtures** runs `echo.mdx`, which must pass and list its `manual` block as
+  untested, and `wrong-expect.mdx`, which must fail naming its second `run` block.
 - **Plan** lists the pages under `content/` with a line starting `` ```bash run ``, plus
   `pull-image.mdx`, and checks that the run can read Horopter's images.
 - **Tutorial** runs each listed page in its own job, after logging in to `ghcr.io` with the
@@ -137,7 +140,9 @@ changing under the same tag.
 ## Why fork and Dependabot pull requests skip the tutorials
 
 While Horopter's images are private, the workflow's `GITHUB_TOKEN` reads one only if that
-image's package settings grant `horopter-docs` Read under "Manage Actions access". A pull
+image's package settings grant `horopter-docs` Read under "Manage Actions access". Neither
+GitHub's REST API nor its Terraform provider manages that list, so the grant is made by hand,
+once for each image a tutorial pulls. A pull
 request from a fork or from Dependabot runs with a token that may not reach the packages at
 all. When such a run cannot read the image, Plan leaves a "Tutorials skipped" notice and the
 Tutorial jobs are skipped; the Harness fixtures job still runs. Any other run that cannot read
