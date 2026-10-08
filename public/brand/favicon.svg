@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="Horopter">
+  <title>Horopter</title>
+  <!-- Redrawn on a 16-unit grid rather than scaled down from mark.svg, so the strokes
+       land on whole pixels at 16px on a 1x display: circle centre (8,8) r 5 with a
+       2-unit stroke puts the outer edge at 2 and 14 and the inner at 4 and 12.
+       Scaling mark.svg instead gives a 1.92px stroke, which straddles the grid and
+       renders soft grey.
+       The stroke is deliberately HEAVIER than mark.svg in proportion - 2/5 of the radius
+       against 12/37, about 25% more - because a mark scaled down keeps its ratios and loses
+       its legibility. This is optical sizing, the same argument that took the mark from a
+       7.5 stroke to 12.5 during the weight study, applied again at the small end. The node
+       ratio (2x the stroke) and the butt caps are unchanged. -->
+  <path d="M7 12.9 A5 5 0 1 1 9 12.9" fill="none" stroke="#10161B" stroke-width="2" stroke-linecap="butt"/>
+  <circle cx="8" cy="3" r="2" fill="#128897"/>
+</svg>

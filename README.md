@@ -14,7 +14,12 @@ prek install
 BASE_PATH= pnpm dev   # http://localhost:3000, without the /horopter-docs base path
 ```
 
-Pages are MDX under `content/docs/`.
+Pages are MDX under `content/docs/`, in five sections — Tutorials, How-to, Reference,
+Concepts and Contributing — each a folder with an `index.mdx`. `content/docs/meta.json` sets
+their sidebar order after the landing page.
+
+`public/brand/` holds the Horopter lockup and favicons, light and dark: copies of the brand's
+own files, unchanged. Replace them from the source rather than editing them here.
 
 ## Checks
 

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="Horopter">
+  <title>Horopter</title>
+  <!-- Dark-ground favicon. Same 16-unit hinted grid as favicon.svg. -->
+  <path d="M7 12.9 A5 5 0 1 1 9 12.9" fill="none" stroke="#E6EDF1" stroke-width="2" stroke-linecap="butt"/>
+  <circle cx="8" cy="3" r="2" fill="#128897"/>
+</svg>

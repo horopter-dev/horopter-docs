@@ -2,8 +2,13 @@ import { DocsBody, DocsDescription, DocsPage, DocsTitle } from "fumadocs-ui/layo
 import { createRelativeLink } from "fumadocs-ui/mdx";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Lockup } from "#components/lockup.tsx";
 import { getMDXComponents } from "#components/mdx.tsx";
 import { source } from "#lib/source.ts";
+
+function isLanding(page: (typeof source)["$inferPage"]): boolean {
+  return page.slugs.length === 0;
+}
 
 export default async function Page(props: PageProps<"/[[...slug]]">) {
   const { slug } = await props.params;
@@ -14,7 +19,9 @@ export default async function Page(props: PageProps<"/[[...slug]]">) {
 
   return (
     <DocsPage toc={page.data.toc} full={page.data.full ?? false}>
-      <DocsTitle>{page.data.title}</DocsTitle>
+      <DocsTitle>
+        {isLanding(page) ? <Lockup className="h-16 w-auto" /> : page.data.title}
+      </DocsTitle>
       <DocsDescription>{page.data.description}</DocsDescription>
       <DocsBody>
         <MDX components={getMDXComponents({ a: createRelativeLink(source, page) })} />
@@ -33,7 +40,7 @@ export async function generateMetadata(props: PageProps<"/[[...slug]]">): Promis
   if (!page) notFound();
 
   return {
-    title: page.data.title,
+    title: isLanding(page) ? { absolute: page.data.title } : page.data.title,
     description: page.data.description ?? null,
   };
 }
