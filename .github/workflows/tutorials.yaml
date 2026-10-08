@@ -1,0 +1,41 @@
+name: Tutorials
+
+on:
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: tutorials-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The harness proves itself on two fixtures: one it must pass and one it must fail.
+  fixtures:
+    name: Harness fixtures
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          install_args: node pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Echo steps pass
+        run: pnpm --silent tutorial scripts/tutorial/fixtures/echo.mdx
+      - name: A wrong expect fails, naming its block
+        shell: bash
+        run: |
+          set -euo pipefail
+          if pnpm --silent tutorial scripts/tutorial/fixtures/wrong-expect.mdx 2> report.txt; then
+            echo "::error::the harness passed wrong-expect.mdx, whose second expect block is wrong"
+            exit 1
+          fi
+          cat report.txt
+          grep -F "wrong-expect.mdx: run block at line 14:" report.txt

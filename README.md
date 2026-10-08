@@ -33,6 +33,18 @@ host's root, and this one is served under `/horopter-docs/`.
 
 A push to `main` builds and deploys the site with `docs.yaml`.
 
+## Tutorials
+
+A tutorial's own code blocks are its test. `` ```bash run `` blocks run in page order in one
+bash session, so exported variables and `cd` carry forward. A `` ```text expect `` block after
+a run block must match that block's output line for line: `...` matches any text within a
+line, and a final `...` line allows more output. `tutorials.yaml` runs them on every pull
+request and weekly.
+
+```sh
+pnpm tutorial scripts/tutorial/fixtures/echo.mdx
+```
+
 ## Licence
 
 Apache-2.0; see `LICENSE`.
