@@ -1,0 +1,24 @@
+---
+title: Wrong expect
+description: A fixture tutorial whose second expect block is wrong, so the harness must fail it.
+---
+
+```bash run
+echo one
+```
+
+```text expect
+one
+```
+
+```bash run
+echo two
+```
+
+```text expect
+three
+```
+
+```bash run
+echo never reached by the check
+```
