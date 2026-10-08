@@ -1,11 +1,18 @@
-import { spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { matchOutput } from "#scripts/tutorial/match.ts";
-import { parseTutorial, type Step } from "#scripts/tutorial/parse.ts";
-import { sessionScript, splitOutput } from "#scripts/tutorial/session.ts";
+import { parseTutorial, type Step, type Tutorial } from "#scripts/tutorial/parse.ts";
+import {
+  completedBlocks,
+  type Markers,
+  newMarkers,
+  sessionScript,
+  splitOutput,
+} from "#scripts/tutorial/session.ts";
+
+const cleanupTimeout = 120;
 
 export interface Failure {
   step: Step;
@@ -13,56 +20,95 @@ export interface Failure {
   output: string[];
 }
 
-interface Session {
-  output: string;
-  status: string;
+export interface CleanupFailure {
+  command: string;
+  reason: string;
+  output: string[];
 }
 
-function runSession(script: string): Session {
-  const scriptDir = mkdtempSync(join(tmpdir(), "tutorial-script-"));
-  const workDir = mkdtempSync(join(tmpdir(), "tutorial-"));
+export interface TutorialResult {
+  tutorial: Tutorial;
+  failure?: Failure;
+  cleanupFailure?: CleanupFailure;
+}
+
+interface Phase {
+  index: number;
+  seconds: number;
+}
+
+interface ScriptRun {
+  output: string;
+  ok: boolean;
+  reason: string;
+}
+
+function killGroup(pid: number): void {
   try {
-    const scriptPath = join(scriptDir, "session.sh");
-    writeFileSync(scriptPath, script);
-    const result = spawnSync("bash", [scriptPath], {
-      cwd: workDir,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "inherit"],
-      maxBuffer: 64 * 1024 * 1024,
-    });
-    if (result.error !== undefined) {
-      throw new Error(`could not run bash: ${result.error.message}`, { cause: result.error });
+    process.kill(-pid, "SIGKILL");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+      throw error;
     }
-    const status =
-      result.signal === null ? `exited with status ${result.status}` : `killed by ${result.signal}`;
-    return { output: result.stdout, status };
-  } finally {
-    rmSync(scriptDir, { recursive: true, force: true });
-    rmSync(workDir, { recursive: true, force: true });
   }
 }
 
+function exitReason(code: number | null, signal: string | null, timedOut?: Phase): string {
+  if (timedOut !== undefined) {
+    return `exceeded its timeout of ${timedOut.seconds}s`;
+  }
+  return signal === null ? `exited with status ${code}` : `killed by ${signal}`;
+}
+
 /**
- * Runs a tutorial page's run blocks in one bash session, in a throwaway directory, and checks
- * each against its expect block.
- *
- * Args:
- *   pagePath: The page's MDX file.
- *
- * Returns:
- *   The first failure, a mismatched expect block or a block that stopped the session, or
- *   undefined when every block ran and matched.
+ * Runs a bash script in its own process group. The group is killed when the current phase
+ * runs past its limit, and when the script exits, so nothing the script started outlives it.
  */
-export function runTutorial(pagePath: string): Failure | undefined {
-  const steps = parseTutorial(readFileSync(pagePath, "utf8"));
-  const sentinel = `__TUTORIAL_STEP_${randomBytes(8).toString("hex")}__`;
-  const session = runSession(
-    sessionScript(
-      steps.map((step) => step.command),
-      sentinel,
-    ),
-  );
-  const { completed, unfinished } = splitOutput(session.output, sentinel);
+function runScript(script: string, cwd: string, phaseOf: (output: string) => Phase) {
+  return new Promise<ScriptRun>((resolve, reject) => {
+    const child = spawn("bash", ["-c", script], {
+      cwd,
+      detached: true,
+      stdio: ["ignore", "pipe", "inherit"],
+    });
+    let output = "";
+    let phase: Phase = { index: -1, seconds: 0 };
+    let timer: NodeJS.Timeout | undefined;
+    let timedOut: Phase | undefined;
+    const watch = () => {
+      const next = phaseOf(output);
+      if (next.index === phase.index) {
+        return;
+      }
+      phase = next;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        timedOut = phase;
+        killGroup(child.pid ?? 0);
+      }, phase.seconds * 1000);
+    };
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      output += chunk;
+      watch();
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(new Error(`could not run bash: ${error.message}`, { cause: error }));
+    });
+    child.on("exit", () => {
+      clearTimeout(timer);
+      killGroup(child.pid ?? 0);
+    });
+    child.on("close", (code, signal) => {
+      resolve({ output, ok: code === 0, reason: exitReason(code, signal, timedOut) });
+    });
+    watch();
+  });
+}
+
+function firstFailure(steps: Step[], run: ScriptRun, markers: Markers): Failure | undefined {
+  const { completed, unfinished } = splitOutput(run.output, markers);
   for (const [index, output] of completed.entries()) {
     const step = steps[index];
     if (step?.expect === undefined) {
@@ -76,25 +122,65 @@ export function runTutorial(pagePath: string): Failure | undefined {
   const stopped = steps[completed.length];
   return stopped === undefined
     ? undefined
-    : { step: stopped, reason: session.status, output: unfinished };
+    : { step: stopped, reason: run.reason, output: unfinished };
+}
+
+async function runCleanup(command: string, cwd: string): Promise<CleanupFailure | undefined> {
+  const script = `set -euo pipefail\nexec 2>&1\n${command}\n`;
+  const run = await runScript(script, cwd, () => ({ index: 0, seconds: cleanupTimeout }));
+  if (run.ok) {
+    return undefined;
+  }
+  const output = splitOutput(run.output, newMarkers()).unfinished;
+  return { command, reason: run.reason, output };
+}
+
+/**
+ * Runs a tutorial page's run blocks in one bash session, in a throwaway directory, and checks
+ * each against its expect block. Each block is limited to its timeout. The page's cleanup
+ * command runs afterwards in the same directory, whatever the steps did.
+ *
+ * Args:
+ *   pagePath: The page's MDX file.
+ *
+ * Returns:
+ *   The parsed page; the first failure, a mismatched expect block or a block that stopped
+ *   the session; and the cleanup's failure.
+ */
+export async function runTutorial(pagePath: string): Promise<TutorialResult> {
+  const tutorial = parseTutorial(readFileSync(pagePath, "utf8"));
+  const { steps } = tutorial;
+  const markers = newMarkers();
+  const workDir = mkdtempSync(join(tmpdir(), "tutorial-"));
+  try {
+    const run = await runScript(sessionScript(steps, markers), workDir, (output) => {
+      const index = completedBlocks(output, markers);
+      return { index, seconds: steps[index]?.timeout ?? cleanupTimeout };
+    });
+    const result: TutorialResult = { tutorial };
+    const failure = firstFailure(steps, run, markers);
+    if (failure !== undefined) {
+      result.failure = failure;
+    }
+    const cleanupFailure =
+      tutorial.cleanup === undefined ? undefined : await runCleanup(tutorial.cleanup, workDir);
+    if (cleanupFailure !== undefined) {
+      result.cleanupFailure = cleanupFailure;
+    }
+    return result;
+  } finally {
+    rmSync(workDir, { recursive: true, force: true });
+  }
 }
 
 function indented(lines: string[]): string[] {
   return (lines.length === 0 ? ["(none)"] : lines).map((line) => `    ${line}`);
 }
 
-/**
- * Describes a failure for the person reading CI's log.
- *
- * Args:
- *   pagePath: The page the failure is in, as it should be named.
- *   failure: What `runTutorial` returned.
- *
- * Returns:
- *   The report, naming the page, the block by line, the command, the expected lines and the
- *   output.
- */
-export function formatFailure(pagePath: string, failure: Failure): string {
+function failureLines(pagePath: string, failure: Failure | undefined): string[] {
+  if (failure === undefined) {
+    return [`${pagePath}: every run block passed`];
+  }
   const { step, reason, output } = failure;
   const expected =
     step.expect === undefined
@@ -107,27 +193,65 @@ export function formatFailure(pagePath: string, failure: Failure): string {
     ...expected,
     "  output:",
     ...indented(output),
+  ];
+}
+
+function cleanupLines(pagePath: string, failure: CleanupFailure | undefined): string[] {
+  if (failure === undefined) {
+    return [];
+  }
+  return [
+    `${pagePath}: cleanup ${failure.reason}`,
+    "  command:",
+    ...indented(failure.command.split("\n")),
+    "  output:",
+    ...indented(failure.output),
+  ];
+}
+
+/**
+ * Describes a tutorial's run for the person reading CI's log.
+ *
+ * Args:
+ *   pagePath: The page, as it should be named.
+ *   result: What `runTutorial` returned.
+ *
+ * Returns:
+ *   The report: whether the steps passed, or the failing block by line with its command,
+ *   expected lines and output; each manual block, as untested; and a failing cleanup.
+ */
+export function formatReport(pagePath: string, result: TutorialResult): string {
+  const untested = result.tutorial.manual.map(
+    ({ line, lang }) => `${pagePath}: untested: manual block at line ${line} (${lang})`,
+  );
+  return [
+    ...failureLines(pagePath, result.failure),
+    ...untested,
+    ...cleanupLines(pagePath, result.cleanupFailure),
     "",
   ].join("\n");
 }
 
 /**
- * Runs a tutorial page and reports any problem with it, a page the harness cannot read
- * included, so one bad page names itself and does not stop the pages after it.
+ * Runs a tutorial page and reports on it, a page the harness cannot read included, so one
+ * bad page names itself and does not stop the pages after it.
  *
  * Args:
  *   pagePath: The page's MDX file.
  *
  * Returns:
- *   The report naming the page, or undefined when every run block passed.
+ *   Whether the steps and the cleanup passed, and the report naming the page.
  */
-export function checkTutorial(pagePath: string): string | undefined {
+export async function checkTutorial(
+  pagePath: string,
+): Promise<{ passed: boolean; report: string }> {
   try {
-    const failure = runTutorial(pagePath);
-    return failure === undefined ? undefined : formatFailure(pagePath, failure);
+    const result = await runTutorial(pagePath);
+    const passed = result.failure === undefined && result.cleanupFailure === undefined;
+    return { passed, report: formatReport(pagePath, result) };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return `${pagePath}: ${message}\n`;
+    return { passed: false, report: `${pagePath}: ${message}\n` };
   }
 }
 
@@ -138,11 +262,13 @@ if (import.meta.main) {
     process.exitCode = 2;
   }
   for (const page of pages) {
-    const report = checkTutorial(page);
-    if (report === undefined) {
-      console.log(`${page}: every run block passed`);
+    // Pages may share ports and containers, so they run one at a time.
+    // oxlint-disable-next-line no-await-in-loop
+    const { passed, report } = await checkTutorial(page);
+    if (passed) {
+      process.stdout.write(report);
     } else {
-      console.error(report);
+      process.stderr.write(report);
       process.exitCode = 1;
     }
   }

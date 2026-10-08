@@ -1,6 +1,7 @@
 ---
 title: Echo steps
 description: A fixture tutorial of plain echo steps that the harness must pass.
+cleanup: test -d work
 ---
 
 A variable exported in one step is visible in a later one.
@@ -49,4 +50,10 @@ This block is shown, not run.
 
 ```bash
 exit 1
+```
+
+This block is for the reader to do by hand; the harness lists it as untested.
+
+```bash manual
+open http://localhost:3000
 ```

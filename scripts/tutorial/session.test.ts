@@ -1,60 +1,150 @@
+import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { sessionScript, splitOutput } from "#scripts/tutorial/session.ts";
+import {
+  completedBlocks,
+  type Markers,
+  newMarkers,
+  type SessionBlock,
+  sessionScript,
+  splitOutput,
+} from "#scripts/tutorial/session.ts";
 
-const sentinel = "__STEP_test__";
+const markers: Markers = { step: "__STEP_test__", attempt: "__ATTEMPT_test__" };
+
+function run(blocks: SessionBlock[]) {
+  const result = spawnSync("bash", ["-c", sessionScript(blocks, markers)], { encoding: "utf8" });
+  return { status: result.status, ...splitOutput(result.stdout, markers) };
+}
+
+describe("newMarkers", () => {
+  it("makes distinct markers each time", () => {
+    const first = newMarkers();
+    const second = newMarkers();
+    expect(first.step).not.toBe(first.attempt);
+    expect(first.step).not.toBe(second.step);
+  });
+});
 
 describe("sessionScript", () => {
-  it("runs every command in one strict shell, with a sentinel line after each", () => {
-    expect(sessionScript(["export A=1", "echo $A"], sentinel)).toBe(
-      [
-        "set -euo pipefail",
-        "exec 2>&1",
-        "export A=1",
-        "printf '\\n%s\\n' '__STEP_test__'",
-        "echo $A",
-        "printf '\\n%s\\n' '__STEP_test__'",
-        "",
-      ].join("\n"),
-    );
+  it("carries variables and the working directory from block to block", () => {
+    expect(run([{ command: "export A=1; cd /" }, { command: 'echo "$A $PWD"' }])).toEqual({
+      status: 0,
+      completed: [[], ["1 /"]],
+      unfinished: [],
+    });
+  });
+
+  it("stops at the first failing command, with stderr in the output", () => {
+    expect(run([{ command: "echo out; echo err >&2; false; echo after" }])).toEqual({
+      status: 1,
+      completed: [],
+      unfinished: ["out", "err"],
+    });
+  });
+
+  it("stops on an unset variable and a failure inside a pipeline", () => {
+    expect(run([{ command: "echo $UNSET_IN_TEST" }]).status).not.toBe(0);
+    expect(run([{ command: "false | true" }]).status).not.toBe(0);
+  });
+
+  it("repeats a retry block until it succeeds, keeping only the last attempt's output", () => {
+    const counter = "n=$(( $(cat count 2>/dev/null || echo 0) + 1 )); echo $n > count";
+    const result = run([
+      { command: 'cd "$(mktemp -d)"' },
+      { command: `${counter}\necho "attempt $n"\ntest "$n" -ge 3`, retry: 0.01 },
+    ]);
+    expect(result).toEqual({ status: 0, completed: [[], ["attempt 3"]], unfinished: [] });
+  });
+
+  it("fails a retry attempt at its first failing command, not only its last", () => {
+    const counter = "n=$(( $(cat count 2>/dev/null || echo 0) + 1 )); echo $n > count";
+    const result = run([
+      { command: 'cd "$(mktemp -d)"' },
+      { command: `${counter}\ntest "$n" -ge 2\necho "attempt $n"`, retry: 0.01 },
+    ]);
+    expect(result.completed).toEqual([[], ["attempt 2"]]);
+  });
+
+  it("runs retry attempts in a subshell, so their variables do not carry", () => {
+    const result = run([{ command: "export B=1", retry: 0.01 }, { command: 'echo "${B:-unset}"' }]);
+    expect(result.completed).toEqual([[], ["unset"]]);
+  });
+
+  it("keeps the session strict after a retry block", () => {
+    expect(run([{ command: "true", retry: 0.01 }, { command: "false; echo after" }])).toEqual({
+      status: 1,
+      completed: [[]],
+      unfinished: [],
+    });
   });
 });
 
 describe("splitOutput", () => {
+  const { step, attempt } = markers;
+
   it("splits output into each block's lines", () => {
-    const output = `one\n\n${sentinel}\ntwo\nthree\n\n${sentinel}\n`;
-    expect(splitOutput(output, sentinel)).toEqual({
+    const output = `one\n\n${step}\ntwo\nthree\n\n${step}\n`;
+    expect(splitOutput(output, markers)).toEqual({
       completed: [["one"], ["two", "three"]],
       unfinished: [],
     });
   });
 
   it("gives a block with no output no lines", () => {
-    const output = `\n${sentinel}\nafter\n\n${sentinel}\n`;
-    expect(splitOutput(output, sentinel)).toEqual({ completed: [[], ["after"]], unfinished: [] });
+    const output = `\n${step}\nafter\n\n${step}\n`;
+    expect(splitOutput(output, markers)).toEqual({ completed: [[], ["after"]], unfinished: [] });
   });
 
   it("keeps a block's output that does not end in a newline", () => {
-    const output = `no newline\n${sentinel}\n`;
-    expect(splitOutput(output, sentinel)).toEqual({
+    expect(splitOutput(`no newline\n${step}\n`, markers)).toEqual({
       completed: [["no newline"]],
       unfinished: [],
     });
   });
 
   it("keeps a blank last line the block printed itself", () => {
-    const output = `text\n\n\n${sentinel}\n`;
-    expect(splitOutput(output, sentinel)).toEqual({ completed: [["text", ""]], unfinished: [] });
+    expect(splitOutput(`text\n\n\n${step}\n`, markers)).toEqual({
+      completed: [["text", ""]],
+      unfinished: [],
+    });
   });
 
   it("returns what a block printed before the session stopped", () => {
-    const output = `one\n\n${sentinel}\npartial\nerror: failed\n`;
-    expect(splitOutput(output, sentinel)).toEqual({
+    const output = `one\n\n${step}\npartial\nerror: failed\n`;
+    expect(splitOutput(output, markers)).toEqual({
       completed: [["one"]],
       unfinished: ["partial", "error: failed"],
     });
   });
 
   it("returns no blocks when the session stopped in the first", () => {
-    expect(splitOutput("", sentinel)).toEqual({ completed: [], unfinished: [] });
+    expect(splitOutput("", markers)).toEqual({ completed: [], unfinished: [] });
+  });
+
+  it("keeps the last attempt that printed, when a retried block stopped between attempts", () => {
+    const output = `wait\n\n${attempt}\nstill\n\n${attempt}\n`;
+    expect(splitOutput(output, markers)).toEqual({ completed: [], unfinished: ["still"] });
+  });
+
+  it("keeps a finished block's last attempt even when it printed nothing", () => {
+    const output = `failed\n\n${attempt}\n\n${step}\n`;
+    expect(splitOutput(output, markers)).toEqual({ completed: [[]], unfinished: [] });
+  });
+
+  it("keeps only the last attempt of a retried block, finished or not", () => {
+    const output = `first\n\n${attempt}\nsecond\n\n${step}\nwait\n\n${attempt}\nstill\n`;
+    expect(splitOutput(output, markers)).toEqual({
+      completed: [["second"]],
+      unfinished: ["still"],
+    });
+  });
+});
+
+describe("completedBlocks", () => {
+  it("counts the blocks the output shows as finished", () => {
+    const { step, attempt } = markers;
+    expect(completedBlocks("", markers)).toBe(0);
+    expect(completedBlocks(`a\n\n${attempt}\nb\n${step}\n`, markers)).toBe(1);
+    expect(completedBlocks(`\n${step}\n\n${step}\npartial`, markers)).toBe(2);
   });
 });
