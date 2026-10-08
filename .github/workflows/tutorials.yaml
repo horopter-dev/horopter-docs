@@ -27,8 +27,12 @@ jobs:
         with:
           install_args: node pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Echo steps pass
-        run: pnpm --silent tutorial scripts/tutorial/fixtures/echo.mdx
+      - name: Echo steps pass, listing the manual block as untested
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --silent tutorial scripts/tutorial/fixtures/echo.mdx | tee report.txt
+          grep -F "echo.mdx: untested: manual block at line" report.txt
       - name: A wrong expect fails, naming its block
         shell: bash
         run: |

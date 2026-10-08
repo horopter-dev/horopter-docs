@@ -10,13 +10,32 @@ export interface Expectation {
 export interface Step {
   line: number;
   command: string;
+  timeout: number;
+  retry?: number;
   expect?: Expectation;
 }
 
+export interface ManualBlock {
+  line: number;
+  lang: string;
+}
+
+export interface Tutorial {
+  steps: Step[];
+  manual: ManualBlock[];
+  cleanup?: string;
+}
+
+export const defaultTimeout = 120;
+
 const processor = createProcessor({ format: "mdx" });
 
+function metaWords(block: Code): string[] {
+  return (block.meta ?? "").split(/\s+/);
+}
+
 function hasMarker(block: Code, marker: string): boolean {
-  return (block.meta ?? "").split(/\s+/).includes(marker);
+  return metaWords(block).includes(marker);
 }
 
 function lineOf(block: Code): number {
@@ -33,14 +52,29 @@ function collectCode(node: Nodes, blocks: Code[]): void {
   }
 }
 
-function codeBlocks(source: string): Code[] {
-  // Fumadocs pads the body with one blank line per front-matter line before compiling, so
-  // positions are lines of the file. Parsing the same way tests what is rendered.
-  const matter = frontmatter(source);
-  const padding = "\n".repeat(matter.matter.split("\n").length - 1);
-  const blocks: Code[] = [];
-  collectCode(processor.parse(padding + matter.content), blocks);
-  return blocks;
+function cleanupOf(data: unknown): string | undefined {
+  if (typeof data !== "object" || data === null || !("cleanup" in data)) {
+    return undefined;
+  }
+  if (typeof data.cleanup !== "string") {
+    throw new Error("front matter cleanup is not a string; give it one shell command");
+  }
+  return data.cleanup;
+}
+
+function secondsOption(block: Code, name: string): number | undefined {
+  const word = metaWords(block).find((w) => w.startsWith(`${name}=`));
+  if (word === undefined) {
+    return undefined;
+  }
+  const value = word.slice(name.length + 1);
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw new Error(
+      `run block at line ${lineOf(block)} has ${word}; ${name} takes a positive number of seconds`,
+    );
+  }
+  return seconds;
 }
 
 function runStep(block: Code): Step {
@@ -50,7 +84,16 @@ function runStep(block: Code): Step {
         "run blocks are executed by bash, so mark them ```bash run",
     );
   }
-  return { line: lineOf(block), command: block.value };
+  const step: Step = {
+    line: lineOf(block),
+    command: block.value,
+    timeout: secondsOption(block, "timeout") ?? defaultTimeout,
+  };
+  const retry = secondsOption(block, "retry");
+  if (retry !== undefined) {
+    step.retry = retry;
+  }
+  return step;
 }
 
 function attachExpectation(block: Code, step: Step | undefined): void {
@@ -70,27 +113,57 @@ function attachExpectation(block: Code, step: Step | undefined): void {
   step.expect = { line, lines: block.value === "" ? [] : block.value.split("\n") };
 }
 
+function readBlocks(blocks: Code[]): Pick<Tutorial, "steps" | "manual"> {
+  const steps: Step[] = [];
+  const manual: ManualBlock[] = [];
+  let afterManual = false;
+  for (const block of blocks) {
+    const run = hasMarker(block, "run");
+    if (run && hasMarker(block, "manual")) {
+      throw new Error(
+        `block at line ${lineOf(block)} is marked both run and manual; a step is one or the other`,
+      );
+    }
+    if (run) {
+      steps.push(runStep(block));
+      afterManual = false;
+    } else if (hasMarker(block, "manual")) {
+      manual.push({ line: lineOf(block), lang: block.lang ?? "" });
+      afterManual = true;
+    } else if (hasMarker(block, "expect") && !afterManual) {
+      attachExpectation(block, steps.at(-1));
+    }
+  }
+  return { steps, manual };
+}
+
 /**
- * Reads a tutorial page's runnable steps: each ```bash run block, in page order, with the
- * ```text expect block that follows it, if any. Blocks with neither marker are ignored.
+ * Reads a tutorial page: each ```bash run block, in page order, with its options and the
+ * ```text expect block that follows it; each manual block, which is not run; and the front
+ * matter's cleanup command. An expect block after a manual block is untested with it, and
+ * blocks with no marker are ignored.
  *
  * Args:
  *   source: The page's MDX source, front matter included.
  *
  * Returns:
- *   The run blocks, each with its line in the file and its expected output.
+ *   The page's steps, its manual blocks and its cleanup command, if any.
  *
  * Raises:
- *   Error: a run block is not bash, or an expect block has no run block to belong to.
+ *   Error: a run block is not bash or has a malformed option, a block is both run and
+ *     manual, an expect block has no run block to belong to, or cleanup is not a string.
  */
-export function parseTutorial(source: string): Step[] {
-  const steps: Step[] = [];
-  for (const block of codeBlocks(source)) {
-    if (hasMarker(block, "run")) {
-      steps.push(runStep(block));
-    } else if (hasMarker(block, "expect")) {
-      attachExpectation(block, steps.at(-1));
-    }
+export function parseTutorial(source: string): Tutorial {
+  // Fumadocs pads the body with one blank line per front-matter line before compiling, so
+  // positions are lines of the file. Parsing the same way tests what is rendered.
+  const matter = frontmatter(source);
+  const padding = "\n".repeat(matter.matter.split("\n").length - 1);
+  const blocks: Code[] = [];
+  collectCode(processor.parse(padding + matter.content), blocks);
+  const tutorial: Tutorial = readBlocks(blocks);
+  const cleanup = cleanupOf(matter.data);
+  if (cleanup !== undefined) {
+    tutorial.cleanup = cleanup;
   }
-  return steps;
+  return tutorial;
 }
