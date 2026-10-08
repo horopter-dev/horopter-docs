@@ -1,0 +1,194 @@
+---
+title: Style guide
+description: Page archetypes, heading rules, and the markers that let CI run a tutorial's steps.
+---
+
+Every page on this site fits one of three archetypes. Pick the one your page is, follow its
+heading shape, and stop. This page is an explainer, the second archetype below.
+
+## Archetypes
+
+### Procedure
+
+A recipe the reader follows in order: every tutorial, every how-to page, and every contributing
+page except this one.
+
+Heading shape: a group heading (`## Steps`, or whatever names the group) followed by
+unnumbered `### Title` sub-headings. The order is the heading sequence, so a heading is the
+title alone: never `### Step 1 — Title`, `### Option 1 — Title` or `### 1. Title`.
+
+When every step is a single line, typically one command, use a numbered list under
+`## Steps` instead of sub-headings. The split is by step length: steps with paragraphs of
+explanation get sub-headings, one-liners get a list.
+
+A how-to page has this section order:
+
+```text
+(intro paragraph, optional)
+## Goal
+## Prerequisites
+## Steps
+## Verification
+## Notes                (optional)
+(trailing topical sections, optional, such as "## Why does this happen?")
+```
+
+A tutorial has `## Prerequisites`, then `## Steps` with unnumbered `###` sub-headings, then
+any trailing sections such as `## What's next?`. It has no `## Goal`: its title and
+introduction frame it.
+
+### Explainer
+
+A conceptual page of parallel topics with no inherent order. The reader arrives, reads the
+section they need, and leaves. Examples: every concepts page, and this one.
+
+Heading shape: flat, unnumbered `##` headings, each a parallel topic. `###` sub-headings are
+fine where one topic decomposes naturally, and are not numbered either.
+
+### Reference
+
+Data the reader looks up rather than reads top to bottom, to verify or to copy: the HTTP API,
+configuration, the CLI.
+
+Heading shape: sibling pages use the same `##` sequence in the same order, so the reader
+navigates by habit. A page where a section does not apply omits it rather than leaving it
+empty.
+
+## Heading rules
+
+Three rules apply to every archetype. `pnpm test` fails on a page under `content/` with an H1
+in its body, or with a heading that starts with a number, `Step N` or `Option N`.
+
+### No H1 in the body
+
+The front matter's `title:` is rendered as the page's H1. The body starts at `##`; a `# Title`
+line in it makes a second H1.
+
+### No step or option numbers in headings
+
+Use a group heading with unnumbered sub-headings instead:
+
+```markdown
+## Step 1 — Start the stack         ← wrong
+## Step 2 — Record a change         ← wrong
+
+## Steps                            ← right
+### Start the stack
+### Record a change
+```
+
+### No standalone numbered headings
+
+```markdown
+## 1. Changes                       ← wrong
+## 2. Lifecycle                     ← wrong
+
+## Changes                          ← right: flat parallel topics
+## Lifecycle
+```
+
+If the topics are ordered, the page is a procedure; if they are parallel, an explainer.
+Numbered headings imply an order with no group heading to frame it.
+
+## Components
+
+Fumadocs' components are available on every page without an import. Use `Callout` for a
+warning the reader must not miss, and `Cards` with `Card` for navigation, as on the landing
+page. This site adds one, `<HoropterVersion/>`; see "The version line" below.
+
+## Runnable steps
+
+A tutorial's own code blocks are its test. The harness in `scripts/tutorial/` parses a page
+with the MDX parser the site uses, so what it runs is what the reader sees, and CI runs every
+page under `content/` with a `bash run` block. A marker is a word after a block's language, on
+the opening fence. Fence marked blocks with backticks: CI finds tutorials by a line starting
+`` ```bash run ``.
+
+A block with no marker is shown and never run. A step the reader is asked to do is therefore
+either `run` or `manual`, never unmarked, so nothing a reader does goes untested without the
+report saying so.
+
+### `run`
+
+`` ```bash run `` blocks run in page order in one bash session, under `set -euo pipefail`, in a
+throwaway directory. Variables a block exports and directories it enters carry to later
+blocks, as they do for the reader, and stderr joins stdout in the order they were written. A
+block that exits non-zero stops the session and fails the page. Only bash blocks run; a block
+of any other language marked `run` fails the page.
+
+Two options follow `run` on the fence, each a positive number of seconds; any other value
+fails the page.
+
+| option | default | effect |
+| --- | --- | --- |
+| `timeout=<seconds>` | 120 | The block's limit. When it ends, the session is killed with everything it started, and the page fails at this block. |
+| `retry=<seconds>` | none | Repeats the block at this interval until an attempt succeeds or its timeout ends, for a step that waits on something. |
+
+For example, `` ```bash run timeout=300 retry=5 `` retries every five seconds for up to five
+minutes.
+
+Each `retry` attempt runs in a subshell under `set -e`, so a retried block's variables and
+`cd` do not carry forward. Its `expect` block is checked against the attempt that succeeded.
+An attempt succeeds by its exit status, so a readiness check matches exact values with
+`jq -e`, which exits non-zero on `false`, `null` or no input. Feeding `jq` through process
+substitution rather than a pipe lets a failing command fail the attempt too:
+
+```bash
+jq -e '.status.conditions[] | select(.type == "Ready") | .status == "True"' \
+  < <(kubectl get kustomization app -o json)
+```
+
+### `expect`
+
+A `` ```text expect `` block after a `run` block is that block's output, as the reader sees
+it, line for line:
+
+- `...` within a line matches any text in that line.
+- A line of only `...` matches exactly one line.
+- A final `...` line allows any further output. Without it, an extra line fails the page.
+- An empty `expect` block allows no output.
+
+A `run` block without an `expect` block is checked only by its exit status. A `run` block has
+at most one `expect` block, and an `expect` block before the first `run` block fails the page.
+
+### `manual`
+
+`` ```<lang> manual `` is a step the harness cannot run, in any language. It is not run, and
+the report lists it as untested, by line. An `expect` block after it is untested with it. A
+block cannot be both `run` and `manual`.
+
+### `cleanup`
+
+`cleanup:` in the front matter is one shell command, run after the steps whether they passed
+or failed, so a failed tutorial does not leave containers or images behind:
+
+```yaml
+cleanup: docker image rm --force "ghcr.io/horopter-dev/horoctl:$HOROPTER_VERSION"
+```
+
+It runs in the directory the session started in, with a 120-second limit, in its own shell: it
+does not see variables the steps exported. A failing cleanup fails the page. It must be a
+string; anything else fails the page.
+
+## Steps that cannot run
+
+Before marking a step `manual`, rewrite it as something the harness can check. "The change
+appears on the graph" becomes the same annotation queried through Grafana's API, in a `run`
+block with an `expect` block. Mark a step `manual` only where no check exists, such as opening
+a page in a browser. The report keeps every `manual` step visible, so what is untested is
+never silently trusted.
+
+## The version line
+
+The docs describe one Horopter release, named in the `horopter-version` file at the repository
+root: <HoropterVersion/> today. Every tutorial states the release it is tested against by
+rendering `<HoropterVersion/>` in its introduction:
+
+```mdx
+Each step below is tested against Horopter <HoropterVersion/>.
+```
+
+`pnpm test` fails on a page under `content/` with a `bash run` block that does not render
+it. Steps and `cleanup:` see the same release as `$HOROPTER_VERSION`, so a step names an image
+as `ghcr.io/horopter-dev/horoctl:$HOROPTER_VERSION` rather than writing the tag out, and a bump
+to `horopter-version` changes the page and its test together.
