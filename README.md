@@ -46,11 +46,12 @@ line matches one line, and a final `...` line allows any further output.
   ends, for a step that waits on something. Each attempt runs in a subshell under `set -e`,
   so a retry block's variables and `cd` do not carry forward; its `expect` block is checked
   against the attempt that succeeded. An attempt succeeds by its exit status, so a readiness
-  check matches exact values with `jq -e`, which exits non-zero on `false` or `null`:
+  check matches exact values with `jq -e`, which exits non-zero on `false`, `null` or no
+  input, so a failing command feeding it fails the attempt too:
 
   ```sh
-  kubectl get kustomization app -o json \
-    | jq -e '.status.conditions[] | select(.type == "Ready") | .status == "True"'
+  jq -e '.status.conditions[] | select(.type == "Ready") | .status == "True"' \
+    < <(kubectl get kustomization app -o json)
   ```
 - `` ```<lang> manual `` is a step the harness cannot run. It is not run, and the report lists
   it as untested. An `expect` block after it is untested with it.
