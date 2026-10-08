@@ -1,0 +1,16 @@
+---
+title: Pull the pinned image
+description: A fixture tutorial that pulls a private Horopter image at the pinned release.
+cleanup: docker image rm --force "ghcr.io/horopter-dev/horoctl:$HOROPTER_VERSION"
+---
+
+While Horopter's images are private, pulling one proves the tutorials job has logged in to GHCR,
+and pulling it at `$HOROPTER_VERSION` proves the steps see the pinned release.
+
+```bash run timeout=300
+docker pull --quiet "ghcr.io/horopter-dev/horoctl:$HOROPTER_VERSION"
+```
+
+```text expect
+ghcr.io/horopter-dev/horoctl:v...
+```
