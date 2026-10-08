@@ -6,8 +6,7 @@ description: What Horopter is for, and the words the tutorials use.
 Horopter is a store for change events. Deployments, migrations, feature-flag flips and
 incidents happen in many systems, and each system records them in its own way. Horopter takes
 them in from all of those systems in one shape, then serves them to your observability tools,
-which draw each change as a region on your graphs. When a graph moves, the change that moved
-it is drawn across it.
+so each can show what changed beside the data it already shows you.
 
 This page explains the words the tutorials use. It describes Horopter
 <HoropterVersion/>.
@@ -41,21 +40,19 @@ and these optional ones:
 ## Changes
 
 A **change** is what Horopter derives from every event that shares a ref: one deployment,
-from the event that started it to the event that finished it. It is the thing your graphs
-draw. A change is never written directly; Horopter rebuilds it from its events, so the events
-are the record and the change is a view of them.
+from the event that started it to the event that finished it. It is what Horopter serves to
+your tools. A change is never written directly; Horopter rebuilds it from its events, so the
+events are the record and the change is a view of them.
 
 A change takes one of three shapes:
 
 - **Point**: a moment, such as a configuration reload. It comes from an event posted without
   a correlation ref that says nothing about a lifecycle.
-- **Open**: a change that has started and not yet ended. It is drawn as a region growing to
-  the present.
-- **Closed**: a change with an end. It is drawn as a region from its start to its end, even
-  when the two are the same second.
+- **Open**: a change that has started and not yet ended. It has a start and no end.
+- **Closed**: a change with an end, which may be the same second as its start.
 
 <Callout type="warn">
-  A start event posted without a correlation ref makes an open change, and its region grows
+  A start event posted without a correlation ref makes an open change, and it stays open
   until an event arrives with the `correlation_ref` Horopter returned for it. Give every event
   of something that starts and ends the same correlation ref.
 </Callout>
@@ -117,7 +114,7 @@ not the `ref`: Horopter rejects a correlation ref that already starts with your 
 
 The **subject** is what a change happened to, conventionally path-shaped: `acme/prod`, or
 `acme/prod/api` for one service in it. Every event names one, and readers filter changes by
-it, which is how a graph shows only the changes to the system it plots.
+it, which is how a tool asks for only the changes to the system it watches.
 
 The subject is the producer's claim, not something Horopter verifies. A credential can limit
 the subjects its producer may post to, and Horopter refuses an event outside that limit;
@@ -125,7 +122,7 @@ within it, Horopter stores the subject as given.
 
 ## Titles
 
-A change's **title** is the label drawn on your graph, chosen from its events' titles:
+A change's **title** is its label, chosen from its events' titles:
 
 - The title of the earliest start event that has one. A start describes what changed, and
   later events describe how it went.
