@@ -135,6 +135,63 @@ describe("checkExport", () => {
     ]);
   });
 
+  it("reports a JSX href in an llms file that points outside the base path", () => {
+    const dir = goodExport({
+      "llms-full.txt": '<Card title="Try it" href="/tutorials" description="x" />\n',
+    });
+    expect(checkExport(dir, basePath)).toEqual([
+      "llms-full.txt references /tutorials, outside the base path /horopter-docs",
+    ]);
+  });
+
+  it("reports a relative link in an llms file, which names a source file", () => {
+    const dir = goodExport({
+      "llms-full.txt":
+        "See the [guide](./style-guide.mdx), [tutorials](../tutorials/index.mdx) " +
+        "and [how-to](how-to/index.mdx).\n",
+    });
+    expect(checkExport(dir, basePath)).toEqual([
+      "llms-full.txt links ./style-guide.mdx, a relative link no reader can follow",
+      "llms-full.txt links ../tutorials/index.mdx, a relative link no reader can follow",
+      "llms-full.txt links how-to/index.mdx, a relative link no reader can follow",
+    ]);
+  });
+
+  it("checks a reference-style link definition in an llms file", () => {
+    const dir = goodExport({
+      "llms-full.txt": "See [a][a] and [b][b].\n\n[a]: ./a.mdx\n[b]: /concepts\n",
+    });
+    expect(checkExport(dir, basePath)).toEqual([
+      "llms-full.txt references /concepts, outside the base path /horopter-docs",
+      "llms-full.txt links ./a.mdx, a relative link no reader can follow",
+    ]);
+  });
+
+  it("accepts fragments, URLs and footnotes in an llms file", () => {
+    const dir = goodExport({
+      "llms-full.txt":
+        "[top](#top), [site](https://example.com/x), [mail](mailto:a@b.c) and a note[^1].\n\n" +
+        "[^1]: a footnote, not a link\n",
+    });
+    expect(checkExport(dir, basePath)).toEqual([]);
+  });
+
+  it("ignores link-shaped text in an llms file's code", () => {
+    const dir = goodExport({
+      "llms-full.txt":
+        'Write `[a](./a.mdx)` or ``<a href="/x">``.\n\n' +
+        '```md\n[b](../b.mdx)\n[c]: /c\n<Card href="/d" />\n(/e)\n```\n',
+    });
+    expect(checkExport(dir, basePath)).toEqual([]);
+  });
+
+  it("reports a placeholder an llms file left unrendered", () => {
+    const dir = goodExport({ "llms-full.txt": 'Text \0{"name":"Card"}\0 more\n' });
+    expect(checkExport(dir, basePath)).toEqual([
+      'llms-full.txt holds an unrendered placeholder: {"name":"Card"}',
+    ]);
+  });
+
   it("ignores text files other than llms ones, such as Next's page payloads", () => {
     const dir = goodExport({ "index.txt": "page text mentioning (/elsewhere)\n" });
     expect(checkExport(dir, basePath)).toEqual([]);

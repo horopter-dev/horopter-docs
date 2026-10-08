@@ -1,5 +1,6 @@
 import { loader } from "fumadocs-core/source";
 import { docs } from "#.source/server.ts";
+import { resolveLinks, siteHref } from "#lib/llms.ts";
 import { basePath } from "#lib/site.ts";
 
 export const source = loader({
@@ -15,6 +16,8 @@ export const textSource = loader({
 });
 
 export async function getLLMText(page: (typeof textSource)["$inferPage"]) {
-  const processed = await page.data.getText("processed");
+  const processed = await resolveLinks(await page.data.getText("processed"), (href) =>
+    siteHref(href, basePath, (relative) => textSource.resolveHref(relative, page)),
+  );
   return `# ${page.data.title} (${page.url})\n\n${processed}`;
 }
