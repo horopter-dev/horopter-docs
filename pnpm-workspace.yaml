@@ -1,0 +1,10 @@
+# Refuse any package published less than 24 hours ago, whatever pulls it in.
+minimumReleaseAge: 1440
+
+# No dependency or project lifecycle script runs on install. The MDX sources Fumadocs
+# generates come from the explicit `fumadocs-mdx` step in the build and types scripts.
+ignoreScripts: true
+
+engineStrict: true
+
+savePrefix: ""
