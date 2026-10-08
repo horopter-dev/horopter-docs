@@ -1,0 +1,141 @@
+---
+title: What is Horopter
+description: What Horopter is for, and the words the tutorials use.
+---
+
+Horopter is a store for change events. Deployments, migrations, feature-flag flips and
+incidents happen in many systems, and each system records them in its own way. Horopter takes
+them in from all of those systems in one shape, then serves them to your observability tools,
+which draw each change as a region on your graphs. When a graph moves, the change that moved
+it is drawn across it.
+
+This page explains the words the tutorials use. It describes Horopter
+<HoropterVersion/>.
+
+## Events
+
+An **event** is a fact that something happened: a deployment started, a migration failed.
+Systems that post events to Horopter are **producers**: a CI job, Flux, or a person running
+`horo`.
+
+An event is never updated or deleted once Horopter has stored it. Each one carries three
+required fields:
+
+| field | holds |
+| --- | --- |
+| `type` | what happened, dot-separated, such as `deployment.started` |
+| `subject` | what it happened to, such as `acme/prod` |
+| `occurred_at` | when it happened |
+
+and these optional ones:
+
+| field | holds |
+| --- | --- |
+| `title` | a human-readable name |
+| `correlation_ref` | the value that joins it to other events |
+| `lifecycle` | what it says about its change's lifecycle |
+| `actor` | who or what performed it |
+| `attributes` | any further JSON the producer wants to keep |
+| `idempotency_key` | a key that makes posting the same event twice store it once |
+
+## Changes
+
+A **change** is what Horopter derives from every event that shares a ref: one deployment,
+from the event that started it to the event that finished it. It is the thing your graphs
+draw. A change is never written directly; Horopter rebuilds it from its events, so the events
+are the record and the change is a view of them.
+
+A change takes one of three shapes:
+
+- **Point**: a moment, such as a configuration reload. It comes from an event posted without
+  a correlation ref that says nothing about a lifecycle.
+- **Open**: a change that has started and not yet ended. It is drawn as a region growing to
+  the present.
+- **Closed**: a change with an end. It is drawn as a region from its start to its end, even
+  when the two are the same second.
+
+<Callout type="warn">
+  A start event posted without a correlation ref makes an open change, and its region grows
+  until an event arrives with the `correlation_ref` Horopter returned for it. Give every event
+  of something that starts and ends the same correlation ref.
+</Callout>
+
+## Lifecycle and status
+
+A change's **status** says where it is in its lifecycle:
+
+| status | means |
+| --- | --- |
+| `occurred` | a point that said nothing about a lifecycle |
+| `in_progress` | started, not yet ended |
+| `completed` | ended successfully |
+| `failed` | ended in failure |
+| `rolled_back` | ended by being rolled back |
+| `cancelled` | ended by being cancelled |
+
+Producers never set the status. Horopter derives it from what each event says about the
+change's lifecycle. An event says it in its `lifecycle` field, set to `started`, `completed`,
+`failed`, `rolled_back`, `cancelled`, or `none` to say nothing. Without that field, the last
+segment of the event's type decides:
+
+| type ends in | the event |
+| --- | --- |
+| `.started`, `.begun` | starts the change |
+| `.completed`, `.succeeded`, `.finished`, `.done`, `.ended`, `.resolved`, `.closed` | ends it as `completed` |
+| `.failed`, `.errored`, `.timed_out` | ends it as `failed` |
+| `.rolled_back`, `.rolledback` | ends it as `rolled_back` |
+| `.cancelled`, `.canceled`, `.aborted` | ends it as `cancelled` |
+
+Any other ending says nothing about the lifecycle. So `deployment.started` followed by
+`deployment.completed` on the same ref is a closed change with status `completed`.
+
+A change starts at the earliest start event's `occurred_at`. With no start event, it starts
+at the earliest `occurred_at` of any of its events. Events can arrive in any order and the
+change's start comes out the same.
+
+## Refs and loci
+
+A **ref** names a change: every event with the same ref belongs to the same change. A ref has
+two parts, `<locus>/<ref>`, such as `ci/deploy-4821`.
+
+The second part is the event's **correlation ref**, chosen by the producer. To make several
+events one change, post them all with the same `correlation_ref`. An event posted without one
+starts a change of its own, whose ref ends in the event's id.
+
+The first part is the **locus**. It comes from the credential the producer posts with, never
+from the event, so a producer cannot write into another's changes by guessing their refs.
+Producers whose credentials share a locus can post events onto one change, such as a deploy
+CI starts and a cluster controller completes. Producers with different loci never collide,
+even when they choose the same correlation ref.
+
+When Horopter accepts an event it answers with both: `ref`, the whole ref, and
+`correlation_ref`, the value to send on later events to add them to the same change. That is
+the correlation ref you sent, or the event's id if you sent none. Send the `correlation_ref`,
+not the `ref`: Horopter rejects a correlation ref that already starts with your locus.
+
+## Subject
+
+The **subject** is what a change happened to, conventionally path-shaped: `acme/prod`, or
+`acme/prod/api` for one service in it. Every event names one, and readers filter changes by
+it, which is how a graph shows only the changes to the system it plots.
+
+The subject is the producer's claim, not something Horopter verifies. A credential can limit
+the subjects its producer may post to, and Horopter refuses an event outside that limit;
+within it, Horopter stores the subject as given.
+
+## Titles
+
+A change's **title** is the label drawn on your graph, chosen from its events' titles:
+
+- The title of the earliest start event that has one. A start describes what changed, and
+  later events describe how it went.
+- Without a titled start event, the latest title to arrive on any of its events.
+- With no titles at all, the type of the first of its events Horopter received, so every
+  change has a label.
+
+Give the start event the title you want to see, such as `Deploy api v2.5.0 to prod`.
+
+## Next
+
+The [tutorials](../tutorials/index.mdx) put these words to work: you post events, then see
+the changes on a graph.
