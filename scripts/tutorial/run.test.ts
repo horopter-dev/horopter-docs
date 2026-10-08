@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { formatFailure, runTutorial } from "#scripts/tutorial/run.ts";
+import { checkTutorial, formatFailure, runTutorial } from "#scripts/tutorial/run.ts";
 
 const fixtures = join(import.meta.dirname, "fixtures");
 const fence = "```";
@@ -97,5 +97,30 @@ describe("formatFailure", () => {
         "",
       ].join("\n"),
     );
+  });
+});
+
+describe("checkTutorial", () => {
+  it("reports nothing for a page that passes", () => {
+    expect(checkTutorial(join(fixtures, "echo.mdx"))).toBeUndefined();
+  });
+
+  it("reports a failing page by name", () => {
+    const path = join(fixtures, "wrong-expect.mdx");
+    expect(checkTutorial(path)).toMatch(
+      new RegExp(`^${RegExp.escape(path)}: run block at line 14:`),
+    );
+  });
+
+  it("names the page when the harness cannot read it", () => {
+    const path = page([`${fence}sh run`, "echo hi", fence]);
+    expect(checkTutorial(path)).toBe(
+      `${path}: run block at line 1 is "sh"; run blocks are executed by bash, ` +
+        "so mark them ```bash run\n",
+    );
+  });
+
+  it("names the page when it does not exist", () => {
+    expect(checkTutorial("no/such/page.mdx")).toMatch(/^no\/such\/page\.mdx: ENOENT/);
   });
 });

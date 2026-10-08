@@ -80,7 +80,7 @@ function attachExpectation(block: Code, step: Step | undefined): void {
  * Returns:
  *   The run blocks, each with its line in the file and its expected output.
  *
- * Throws:
+ * Raises:
  *   Error: a run block is not bash, or an expect block has no run block to belong to.
  */
 export function parseTutorial(source: string): Step[] {

@@ -111,6 +111,26 @@ export function formatFailure(pagePath: string, failure: Failure): string {
   ].join("\n");
 }
 
+/**
+ * Runs a tutorial page and reports any problem with it, a page the harness cannot read
+ * included, so one bad page names itself and does not stop the pages after it.
+ *
+ * Args:
+ *   pagePath: The page's MDX file.
+ *
+ * Returns:
+ *   The report naming the page, or undefined when every run block passed.
+ */
+export function checkTutorial(pagePath: string): string | undefined {
+  try {
+    const failure = runTutorial(pagePath);
+    return failure === undefined ? undefined : formatFailure(pagePath, failure);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return `${pagePath}: ${message}\n`;
+  }
+}
+
 if (import.meta.main) {
   const pages = process.argv.slice(2);
   if (pages.length === 0) {
@@ -118,11 +138,11 @@ if (import.meta.main) {
     process.exitCode = 2;
   }
   for (const page of pages) {
-    const failure = runTutorial(page);
-    if (failure === undefined) {
+    const report = checkTutorial(page);
+    if (report === undefined) {
       console.log(`${page}: every run block passed`);
     } else {
-      console.error(formatFailure(page, failure));
+      console.error(report);
       process.exitCode = 1;
     }
   }
