@@ -24,6 +24,8 @@ jobs:
         with:
           install_args: node pnpm
       - run: pnpm install --frozen-lockfile
+      # Fails on a known vulnerability, moderate or worse, in any installed package.
+      - run: pnpm audit --audit-level=moderate
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm types:check
