@@ -43,6 +43,7 @@ updates:
     groups:
       hooks:
         patterns: ["*"]
+        update-types: [minor, patch]
     commit-message:
       prefix: chore
       include: scope
