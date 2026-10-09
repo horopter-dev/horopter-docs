@@ -177,6 +177,7 @@ describe("parseTutorial", () => {
         { line: 1, lang: "bash" },
         { line: 7, lang: "yaml" },
       ],
+      setupTimeout: 120,
     });
   });
 
@@ -195,6 +196,7 @@ describe("parseTutorial", () => {
     expect(parseTutorial(page)).toEqual({
       steps: [{ line: 1, command: "echo ran", timeout: 120 }],
       manual: [{ line: 4, lang: "bash" }],
+      setupTimeout: 120,
     });
   });
 
@@ -210,6 +212,7 @@ describe("parseTutorial", () => {
     expect(parseTutorial(page)).toEqual({
       steps: [],
       manual: [],
+      setupTimeout: 120,
       cleanup: "docker compose down -v",
     });
   });
@@ -218,6 +221,41 @@ describe("parseTutorial", () => {
     const page = ["---", "cleanup:", "  - one", "---", ""].join("\n");
     expect(() => parseTutorial(page)).toThrow(
       "front matter cleanup is not a string; give it one shell command",
+    );
+  });
+
+  it("reads the setup command and its timeout from the front matter", () => {
+    const page = [
+      "---",
+      "setup: $DOCS_ROOT/journeys/flux/setup.sh",
+      "setup-timeout: 600",
+      "---",
+      "",
+    ].join("\n");
+    expect(parseTutorial(page)).toEqual({
+      steps: [],
+      manual: [],
+      setup: "$DOCS_ROOT/journeys/flux/setup.sh",
+      setupTimeout: 600,
+    });
+  });
+
+  it("gives setup 120 seconds when the page sets no setup-timeout", () => {
+    const page = ["---", "setup: ./setup.sh", "---", ""].join("\n");
+    expect(parseTutorial(page).setupTimeout).toBe(120);
+  });
+
+  it("rejects a setup that is not a command", () => {
+    const page = ["---", "setup:", "  - one", "---", ""].join("\n");
+    expect(() => parseTutorial(page)).toThrow(
+      "front matter setup is not a string; give it one shell command",
+    );
+  });
+
+  it.each([["0"], ["-5"], ["1.5"], ['"60"'], ["ten"]])("rejects a setup-timeout of %s", (value) => {
+    const page = ["---", "setup: ./setup.sh", `setup-timeout: ${value}`, "---", ""].join("\n");
+    expect(() => parseTutorial(page)).toThrow(
+      /^front matter setup-timeout is .*; give it a positive whole number of seconds$/,
     );
   });
 });

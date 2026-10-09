@@ -45,8 +45,8 @@ A push to `main` builds and deploys the site with `docs.yaml`.
 ## Tutorials
 
 A tutorial's own code blocks are its test: `scripts/tutorial/` runs a page's `` ```bash run ``
-blocks and checks their `` ```text expect `` blocks, against the Horopter release named in
-`horopter-version`. `tutorials.yaml` runs every tutorial in CI.
+blocks and checks their `` ```text expect `` blocks, against the versions pinned in
+`versions`. `tutorials.yaml` runs every tutorial in CI.
 
 ```sh
 pnpm tutorial scripts/tutorial/fixtures/echo.mdx
@@ -56,7 +56,7 @@ The site's Contributing section documents both halves: the
 [style guide](https://horopter-dev.github.io/horopter-docs/contributing/style-guide/) holds
 the markers and their options, and
 [Testing a tutorial](https://horopter-dev.github.io/horopter-docs/contributing/testing-a-tutorial/)
-holds running them, reading a failure report, bumping the pin, and why fork and Dependabot
+holds running them, reading a failure report, bumping a pin, and why fork and Dependabot
 pull requests skip the tutorials.
 
 ## Licence

@@ -60,22 +60,24 @@ git grep -lE '^```bash run' -- 'content/*.mdx' | xargs -r pnpm --silent tutorial
 CI also runs `scripts/tutorial/fixtures/pull-image.mdx`, which pulls a private image at the
 pinned release and so needs the `ghcr.io` login above.
 
-### Bump the pinned Horopter version
+### Bump a pin
 
-1. Write the new release tag, such as `v0.8.0`, into `horopter-version`, as the file's only
-   line.
+1. Change the pin's line in `versions`, such as `HOROPTER_VERSION=v0.8.0`.
 2. Run every tutorial against it, as above.
 3. Open a pull request.
 
-The tag reaches every page that renders `<HoropterVersion/>` and every step that reads
-`$HOROPTER_VERSION`. The file must hold one tag, `v` and three numbers with an optional
-pre-release suffix, or the build and the harness both stop with an error naming the file.
+The value reaches every page that renders it, with `<HoropterVersion/>` or
+`<Version name="…"/>`, and every setup, step and cleanup that reads the variable of the same
+name. Each line is `KEY=value`, the key in capitals, digits and underscores, the value not
+empty, and no key twice. `HOROPTER_VERSION` is required and must be a release tag, `v` and
+three numbers with an optional pre-release suffix. Otherwise the build and the harness both stop
+with an error naming the file and the line.
 
 On the pull request, the Tutorials workflow's Plan job first checks that it can read
 `ghcr.io/horopter-dev/horoctl` at the new tag, and fails if the tag does not exist or the
 package does not grant `horopter-docs` access. Each tutorial then runs against the new release
-in its own job. A push to `main` that changes `horopter-version` runs the workflow again, and
-the docs site, rebuilt on the same push, shows the new tag.
+in its own job. A push to `main` that changes `versions` runs the workflow again, and the docs
+site, rebuilt on the same push, shows the new pins.
 
 ## Reading a failure report
 
@@ -117,6 +119,11 @@ scripts/tutorial/fixtures/pull-image.mdx: run block at line 10: exited with stat
     unauthorized
 ```
 
+A page with `setup:` reports it first: `page: setup passed`, or, when it failed,
+`page: setup exited with status N; no run block ran` or
+`page: setup exceeded its timeout of Ns; no run block ran`, each followed by the setup command
+and what it printed. A failed setup reports no `run` block, since none ran.
+
 A line `page: untested: manual block at line N (lang)` lists each `manual` block, pass or
 fail. A failing `cleanup:` adds `page: cleanup` and its reason, with the command and its
 output. A page the harness cannot read, such as one with a `run` block that is not bash, gets
@@ -125,10 +132,11 @@ one line naming the page and what is wrong with it.
 ## What CI runs
 
 The Tutorials workflow, `.github/workflows/tutorials.yaml`, runs on every pull request, weekly,
-on a push to `main` that changes `horopter-version`, and when started by hand. Its three jobs:
+on a push to `main` that changes `versions`, and when started by hand. Its three jobs:
 
 - **Harness fixtures** runs `echo.mdx`, which must pass and list its `manual` block as
-  untested, and `wrong-expect.mdx`, which must fail naming its second `run` block.
+  untested; `setup.mdx`, which must pass, its steps reading what its setup script exported;
+  and `wrong-expect.mdx`, which must fail naming its second `run` block.
 - **Plan** lists the pages under `content/` with a line starting `` ```bash run ``, plus
   `pull-image.mdx`, and checks that the run can read Horopter's images.
 - **Tutorial** runs each listed page in its own job, after logging in to `ghcr.io` with the

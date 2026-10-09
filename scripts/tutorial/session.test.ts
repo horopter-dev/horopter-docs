@@ -1,4 +1,7 @@
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   completedBlocks,
@@ -7,9 +10,14 @@ import {
   type SessionBlock,
   sessionScript,
   splitOutput,
+  splitSetup,
 } from "#scripts/tutorial/session.ts";
 
-const markers: Markers = { step: "__STEP_test__", attempt: "__ATTEMPT_test__" };
+const markers: Markers = {
+  setup: "__SETUP_test__",
+  step: "__STEP_test__",
+  attempt: "__ATTEMPT_test__",
+};
 
 const counter = "n=$(( $(cat count 2>/dev/null || echo 0) + 1 )); echo $n > count";
 
@@ -21,11 +29,29 @@ function run(blocks: SessionBlock[]) {
   return { status: result.status, ...splitOutput(result.stdout, markers) };
 }
 
+function runWithSetup(setupLines: string[], blocks: SessionBlock[]) {
+  const dir = mkdtempSync(join(tmpdir(), "session-test-"));
+  try {
+    writeFileSync(join(dir, "setup.sh"), setupLines.join("\n"));
+    const script = sessionScript(blocks, markers, `${dir}/setup.sh one`);
+    const { status, stdout } = spawnSync("bash", ["-c", script], { encoding: "utf8" });
+    const { lines, rest } = splitSetup(stdout, markers);
+    return {
+      status,
+      setup: lines,
+      ...splitOutput(rest ?? "", markers),
+      finished: rest !== undefined,
+    };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 describe("newMarkers", () => {
   it("makes distinct markers each time", () => {
     const first = newMarkers();
     const second = newMarkers();
-    expect(first.step).not.toBe(first.attempt);
+    expect(new Set([first.setup, first.step, first.attempt]).size).toBe(3);
     expect(first.step).not.toBe(second.step);
   });
 });
@@ -79,6 +105,52 @@ describe("sessionScript", () => {
       completed: [[]],
       unfinished: [],
     });
+  });
+});
+
+describe("sessionScript with a setup", () => {
+  it("sources the setup with its arguments before the first block", () => {
+    const result = runWithSetup(
+      ['echo "setting up $1"', "export S=ready"],
+      [{ command: "echo $S" }],
+    );
+    expect(result).toEqual({
+      status: 0,
+      setup: ["setting up one"],
+      completed: [["ready"]],
+      unfinished: [],
+      finished: true,
+    });
+  });
+
+  it("stops before the first block when the setup fails", () => {
+    const result = runWithSetup(["echo partway", "false"], [{ command: "echo never" }]);
+    expect(result).toEqual({
+      status: 1,
+      setup: ["partway"],
+      completed: [],
+      unfinished: [],
+      finished: false,
+    });
+  });
+});
+
+describe("splitSetup", () => {
+  const { setup, step } = markers;
+
+  it("splits setup's lines from the blocks' output", () => {
+    expect(splitSetup(`built\n\n${setup}\none\n\n${step}\n`, markers)).toEqual({
+      lines: ["built"],
+      rest: `one\n\n${step}\n`,
+    });
+  });
+
+  it("gives a setup that printed nothing no lines", () => {
+    expect(splitSetup(`\n${setup}\n`, markers)).toEqual({ lines: [], rest: "" });
+  });
+
+  it("has no rest while setup has not finished", () => {
+    expect(splitSetup("still building\n", markers)).toEqual({ lines: ["still building"] });
   });
 });
 
