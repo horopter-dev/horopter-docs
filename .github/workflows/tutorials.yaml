@@ -21,7 +21,7 @@ jobs:
   # The harness proves itself on three fixtures: two it must pass and one it must fail.
   fixtures:
     name: Harness fixtures
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -57,7 +57,7 @@ jobs:
   # in the pin, say, or an image never granted.
   plan:
     name: Plan
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: read
@@ -113,7 +113,7 @@ jobs:
     name: Tutorial
     needs: plan
     if: needs.plan.outputs.registry == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: read

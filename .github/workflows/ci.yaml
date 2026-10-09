@@ -13,7 +13,7 @@ concurrency:
 jobs:
   site:
     name: Site
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -36,7 +36,7 @@ jobs:
   # no Node, so this job installs only prek.
   hooks:
     name: Hooks
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
