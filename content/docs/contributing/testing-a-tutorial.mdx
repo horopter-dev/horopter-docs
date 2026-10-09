@@ -1,5 +1,5 @@
 ---
-title: Testing a tutorial
+title: Testing a Tutorial
 description: Run tutorials locally, read a failure report, and bump the pinned Horopter release.
 ---
 
@@ -18,7 +18,7 @@ CI runs every tutorial against the pinned Horopter release, using the harness in
 
 ## Steps
 
-### Set up a clone
+### Set Up a Clone
 
 ```bash
 git clone https://github.com/horopter-dev/horopter-docs.git
@@ -27,7 +27,7 @@ mise install
 pnpm install
 ```
 
-### Run one tutorial
+### Run One Tutorial
 
 Pass the page to `pnpm tutorial`:
 
@@ -47,7 +47,7 @@ command exits 0 when every page passes, 1 when one fails, and 2 when no page is 
 Without `--silent`, pnpm also prints the command it runs; with or without it, pnpm ends a
 failing run with an `[ELIFECYCLE] Command failed` line, left out of the reports below.
 
-### Run every tutorial
+### Run Every Tutorial
 
 `pnpm tutorial` takes several pages, runs them one at a time, and reports on each, so one
 failing page does not stop the rest. This runs every tutorial page under `content/`, as CI
@@ -60,7 +60,7 @@ git grep -lE '^```bash run' -- 'content/*.mdx' | xargs -r pnpm --silent tutorial
 CI also runs `scripts/tutorial/fixtures/pull-image.mdx`, which pulls a private image at the
 pinned release and so needs the `ghcr.io` login above.
 
-### Bump a pin
+### Bump a Pin
 
 Renovate opens the pull request for a pin it watches: `HOROPTER_VERSION`, when Horopter
 publishes a release. Each pin it watches has a matching regex manager in `renovate.json5`; add
@@ -83,7 +83,7 @@ package does not grant `horopter-docs` access. Each tutorial then runs against t
 in its own job. A push to `main` that changes `versions` runs the workflow again, and the docs
 site, rebuilt on the same push, shows the new pins.
 
-## Reading a failure report
+## Reading a Failure Report
 
 This is the `wrong-expect.mdx` fixture's report, whose second `expect` block is wrong:
 
@@ -133,7 +133,7 @@ fail. A failing `cleanup:` adds `page: cleanup` and its reason, with the command
 output. A page the harness cannot read, such as one with a `run` block that is not bash, gets
 one line naming the page and what is wrong with it.
 
-## What CI runs
+## What CI Runs
 
 The Tutorials workflow, `.github/workflows/tutorials.yaml`, runs on every pull request, weekly,
 on a push to `main` that changes `versions`, and when started by hand. Its three jobs:
@@ -149,7 +149,7 @@ on a push to `main` that changes `versions`, and when started by hand. Its three
 The weekly run catches drift from outside this repository, such as an image the tutorials pull
 changing under the same tag.
 
-## Why fork and Dependabot pull requests skip the tutorials
+## Why Fork and Dependabot Pull Requests Skip the Tutorials
 
 While Horopter's images are private, the workflow's `GITHUB_TOKEN` reads one only if that
 image's package settings grant `horopter-docs` Read under "Manage Actions access". Neither
