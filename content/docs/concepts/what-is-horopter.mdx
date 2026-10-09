@@ -90,25 +90,49 @@ A change starts at the earliest start event's `occurred_at`. With no start event
 at the earliest `occurred_at` of any of its events. Events can arrive in any order and the
 change's start comes out the same.
 
-## Refs and loci
+## Refs
 
-A **ref** names a change: every event with the same ref belongs to the same change. A ref has
-two parts, `<locus>/<ref>`, such as `ci/deploy-4821`.
+A **ref** names a change: every event with the same ref belongs to the same change. A ref is
+a locus and a correlation ref, joined by a `/`:
 
-The second part is the event's **correlation ref**, chosen by the producer. To make several
-events one change, post them all with the same `correlation_ref`. An event posted without one
-starts a change of its own, whose ref ends in the event's id.
+| part | in the ref `ci/deploy-4821` | set by |
+| --- | --- | --- |
+| [locus](#locus) | `ci` | the credential the producer posts with |
+| correlation ref | `deploy-4821` | the producer, in the event's `correlation_ref` field |
 
-The first part is the **locus**. It comes from the credential the producer posts with, never
-from the event, so a producer cannot write into another's changes by guessing their refs.
-Producers whose credentials share a locus can post events onto one change, such as a deploy
-CI starts and a cluster controller completes. Producers with different loci never collide,
-even when they choose the same correlation ref.
+The **correlation ref** is the producer's choice. To make several events one change, post
+them all with the same `correlation_ref`. An event posted without one starts a change of its
+own, whose correlation ref is the event's id.
 
 When Horopter accepts an event it answers with both: `ref`, the whole ref, and
 `correlation_ref`, the value to send on later events to add them to the same change. That is
 the correlation ref you sent, or the event's id if you sent none. Send the `correlation_ref`,
 not the `ref`: Horopter rejects a correlation ref that already starts with your locus.
+
+## Locus
+
+A **locus** is a set of producers that can add events to each other's changes. It is the first
+part of every ref, and it is what keeps one producer's changes apart from another's.
+
+A locus belongs to a credential, not to an event. Whoever issues the credential sets it, and
+every event posted with that credential gets that locus at the front of its ref. If no locus
+is given when the credential is issued, it is the credential's source: the name of the system
+the credential was issued for, such as `github`. A locus cannot be empty or contain a `/`.
+
+The locus decides which producers can share a change:
+
+- **Same locus**: the producers can work on the same change. A deploy that CI starts and a
+  cluster controller completes is one change if both of their credentials have the locus
+  `deploys` and both post the correlation ref `api-v2.5.0`.
+- **Different locus**: their events never share a change, even when they post the same
+  correlation ref. A producer cannot write into another's changes by guessing their refs.
+
+Give credentials the same locus only when their producers need to share changes. Otherwise,
+the default keeps each source's changes apart.
+
+The name comes from geometry, where a locus is a set of points defined by a rule. The
+horopter itself is a locus: the points in space that the two eyes see at corresponding
+places on their retinas.
 
 ## Subject
 
