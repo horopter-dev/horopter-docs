@@ -1,0 +1,54 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Two bots update this repository, each owning different pins. Dependabot keeps npm, the
+  // workflows' action SHAs and the pre-commit hooks (.github/dependabot.yaml). Renovate owns
+  // mise.toml and the versions file. enabledManagers is what keeps them apart: a manager not
+  // listed here does not run, so Renovate never edits a file Dependabot owns. Renovate runs
+  // from horopter-dev/infrastructure's workflow, whose cron is the only schedule; do not add a
+  // `schedule` here.
+  extends: ["config:recommended"],
+  enabledManagers: ["mise", "custom.regex"],
+
+  // Policy shared by every horopter-dev repository Renovate updates; keep the copies alike.
+  semanticCommits: "enabled",
+  dependencyDashboard: true,
+  // The same cooldown as Dependabot's. Vulnerability fixes skip it.
+  minimumReleaseAge: "7 days",
+  // A release with no timestamp is proposed without the cooldown instead of never.
+  minimumReleaseAgeBehaviour: "timestamp-optional",
+  // The default hourly limit throttles a bot that runs continuously; a cron run is one hour.
+  prHourlyLimit: 0,
+  prConcurrentLimit: 10,
+  osvVulnerabilityAlerts: true,
+  vulnerabilityAlerts: {
+    semanticCommitType: "fix",
+    labels: ["security"],
+  },
+
+  packageRules: [
+    {
+      // Majors wait longer: they are the ones that get emergency-patched.
+      matchUpdateTypes: ["major"],
+      minimumReleaseAge: "14 days",
+    },
+    {
+      // Horopter's own release: the tutorials should test it as soon as it is out.
+      matchDepNames: ["horopter-dev/horopter"],
+      minimumReleaseAge: null,
+    },
+  ],
+
+  // The versions file holds only KEY=value lines, which its loader enforces, so a pin cannot
+  // carry a renovate comment. Each key gets its manager here instead; a pin added to versions
+  // gets one in the same pull request.
+  customManagers: [
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^versions$/"],
+      matchStrings: ["(?m)^HOROPTER_VERSION=(?<currentValue>\\S+)$"],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "horopter-dev/horopter",
+    },
+  ],
+}
