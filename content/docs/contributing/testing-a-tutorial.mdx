@@ -62,6 +62,10 @@ pinned release and so needs the `ghcr.io` login above.
 
 ### Bump a pin
 
+Renovate opens the pull request for a pin it watches: `HOROPTER_VERSION`, when Horopter
+publishes a release. Each pin it watches has a matching regex manager in `renovate.json5`; add
+one when you add a pin to `versions`. For any other pin, by hand:
+
 1. Change the pin's line in `versions`, such as `HOROPTER_VERSION=v0.8.0`.
 2. Run every tutorial against it, as above.
 3. Open a pull request.
