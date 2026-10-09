@@ -1,0 +1,20 @@
+---
+title: Set up a world
+description: A fixture tutorial whose setup script's exports and directory reach its steps.
+setup: $DOCS_ROOT/scripts/tutorial/fixtures/setup.sh
+setup-timeout: 30
+cleanup: test -d world
+---
+
+The setup script is sourced in the steps' shell before the first step, so what it exports and
+the directory it enters are the steps' own.
+
+```bash run
+echo "$WORLD"
+basename "$PWD"
+```
+
+```text expect
+built by setup.sh
+world
+```

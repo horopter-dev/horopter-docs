@@ -23,6 +23,8 @@ export interface ManualBlock {
 export interface Tutorial {
   steps: Step[];
   manual: ManualBlock[];
+  setup?: string;
+  setupTimeout: number;
   cleanup?: string;
 }
 
@@ -52,14 +54,35 @@ function collectCode(node: Nodes, blocks: Code[]): void {
   }
 }
 
-function cleanupOf(data: unknown): string | undefined {
-  if (typeof data !== "object" || data === null || !("cleanup" in data)) {
+function matterValue(data: unknown, key: string): unknown {
+  return typeof data === "object" && data !== null
+    ? Object.entries(data).find(([k]) => k === key)?.[1]
+    : undefined;
+}
+
+function commandOf(data: unknown, key: string): string | undefined {
+  const value = matterValue(data, key);
+  if (value === undefined) {
     return undefined;
   }
-  if (typeof data.cleanup !== "string") {
-    throw new Error("front matter cleanup is not a string; give it one shell command");
+  if (typeof value !== "string") {
+    throw new Error(`front matter ${key} is not a string; give it one shell command`);
   }
-  return data.cleanup;
+  return value;
+}
+
+function setupTimeoutOf(data: unknown): number {
+  const value = matterValue(data, "setup-timeout");
+  if (value === undefined) {
+    return defaultTimeout;
+  }
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new Error(
+      `front matter setup-timeout is ${JSON.stringify(value)}; ` +
+        "give it a positive whole number of seconds",
+    );
+  }
+  return value;
 }
 
 function secondsOption(block: Code, name: string): number | undefined {
@@ -140,18 +163,20 @@ function readBlocks(blocks: Code[]): Pick<Tutorial, "steps" | "manual"> {
 /**
  * Reads a tutorial page: each ```bash run block, in page order, with its options and the
  * ```text expect block that follows it; each manual block, which is not run; and the front
- * matter's cleanup command. An expect block after a manual block is untested with it, and
- * blocks with no marker are ignored.
+ * matter's setup command, setup timeout and cleanup command. An expect block after a manual
+ * block is untested with it, and blocks with no marker are ignored.
  *
  * Args:
  *   source: The page's MDX source, front matter included.
  *
  * Returns:
- *   The page's steps, its manual blocks and its cleanup command, if any.
+ *   The page's steps, its manual blocks, its setup command, if any, with its timeout in
+ *   seconds, and its cleanup command, if any.
  *
  * Raises:
  *   Error: a run block is not bash or has a malformed option, a block is both run and
- *     manual, an expect block has no run block to belong to, or cleanup is not a string.
+ *     manual, an expect block has no run block to belong to, setup or cleanup is not a string,
+ *     or setup-timeout is not a positive whole number.
  */
 export function parseTutorial(source: string): Tutorial {
   // Fumadocs pads the body with one blank line per front-matter line before compiling, so
@@ -160,8 +185,12 @@ export function parseTutorial(source: string): Tutorial {
   const padding = "\n".repeat(matter.matter.split("\n").length - 1);
   const blocks: Code[] = [];
   collectCode(processor.parse(padding + matter.content), blocks);
-  const tutorial: Tutorial = readBlocks(blocks);
-  const cleanup = cleanupOf(matter.data);
+  const tutorial: Tutorial = { ...readBlocks(blocks), setupTimeout: setupTimeoutOf(matter.data) };
+  const setup = commandOf(matter.data, "setup");
+  if (setup !== undefined) {
+    tutorial.setup = setup;
+  }
+  const cleanup = commandOf(matter.data, "cleanup");
   if (cleanup !== undefined) {
     tutorial.cleanup = cleanup;
   }

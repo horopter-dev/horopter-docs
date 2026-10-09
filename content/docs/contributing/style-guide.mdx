@@ -106,7 +106,8 @@ An open change has a start and no end.                        ← right
 
 Fumadocs' components are available on every page without an import. Use `Callout` for a
 warning the reader must not miss, and `Cards` with `Card` for navigation, as on the landing
-page. This site adds one, `<HoropterVersion/>`; see "The version line" below.
+page. This site adds two, `<HoropterVersion/>` and `<Version name="…"/>`; see "The version
+line" below.
 
 ## Runnable steps
 
@@ -171,6 +172,27 @@ block before the first `run` block fails the page.
 the report lists it as untested, by line. An `expect` block after it is untested with it. A
 block cannot be both `run` and `manual`.
 
+### `setup`
+
+`setup:` in the front matter names a script, with any arguments, that builds what the reader
+already has before the page starts, such as a cluster running Flux. The harness sources it in
+the steps' shell before the first `run` block, so the variables it exports and the directory it
+enters are the steps' own. Name the script through `$DOCS_ROOT`, the checkout's absolute path,
+since the session runs in a throwaway directory:
+
+```yaml
+setup: $DOCS_ROOT/journeys/flux/setup.sh
+setup-timeout: 600
+```
+
+Setup has its own limit, `setup-timeout:`, a positive whole number of seconds, 120 when absent.
+A setup that exits non-zero or runs past its limit fails the page before any step runs, and the
+report names it as a setup failure. Its output goes to the report whether it passed or failed.
+`setup:` must be a string; anything else fails the page.
+
+Where a reader sets a value by hand, in a `manual` block, setup exports the same variable, so
+the steps after it read one name for both.
+
 ### `cleanup`
 
 `cleanup:` in the front matter is one shell command, run after the steps whether they passed
@@ -181,8 +203,9 @@ cleanup: docker image rm --force "ghcr.io/horopter-dev/horoctl:$HOROPTER_VERSION
 ```
 
 It runs in the directory the session started in, with a 120-second limit, in its own shell: it
-does not see variables the steps exported. A failing cleanup fails the page. It must be a
-string; anything else fails the page.
+does not see variables setup or the steps exported, but sees the pins and `$DOCS_ROOT`. It runs
+after a failed setup too, so it must cope with a world setup only half built. A failing cleanup
+fails the page. It must be a string; anything else fails the page.
 
 ## Steps that cannot run
 
@@ -194,15 +217,19 @@ never silently trusted.
 
 ## The version line
 
-The docs describe one Horopter release, named in the `horopter-version` file at the repository
-root: <HoropterVersion/> today. Every tutorial states the release it is tested against by
-rendering `<HoropterVersion/>` in its introduction:
+The `versions` file at the repository root pins every version the docs name, one `KEY=value`
+line each. `HOROPTER_VERSION` is the Horopter release the docs describe: <HoropterVersion/>
+today. Every tutorial states the release it is tested against by rendering `<HoropterVersion/>`
+in its introduction:
 
 ```mdx
 Each step below is tested against Horopter <HoropterVersion/>.
 ```
 
 `pnpm test` fails on a page under `content/docs/` with a `bash run` block that does not render
-it anywhere. Steps and `cleanup:` see the same release as `$HOROPTER_VERSION`, so a step names
+it anywhere. `<Version name="FLUX_VERSION"/>` renders any other pin by its key, and a name the
+file does not pin fails the build.
+
+Setup, the steps and `cleanup:` see every pin as a variable of the same name, so a step names
 an image as `ghcr.io/horopter-dev/horoctl:$HOROPTER_VERSION` rather than writing the tag out,
-and a bump to `horopter-version` changes the page and its test together.
+and a bump in `versions` changes the page and its test together.
