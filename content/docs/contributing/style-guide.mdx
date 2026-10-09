@@ -1,5 +1,5 @@
 ---
-title: Style guide
+title: Style Guide
 description: Page archetypes, heading rules, and the markers that let CI run a tutorial's steps.
 ---
 
@@ -54,30 +54,49 @@ Heading shape: sibling pages use the same `##` sequence in the same order, so th
 navigates by habit. A page where a section does not apply omits it rather than leaving it
 empty.
 
-## Heading rules
+## Heading Rules
 
-Three rules apply to every archetype. `pnpm test` fails on a page under `content/docs/` with
-an H1 in its body, or with a heading that starts `N.`, `Step N` or `Option N`.
+Four rules apply to every archetype. `pnpm test` fails on a page under `content/docs/` with
+an H1 in its body, a heading that starts `N.`, `Step N` or `Option N`, or a title, heading or
+card title with a lowercase major word.
 
-### No H1 in the body
+### Title Case
+
+Titles, headings, and the names of pages in links and cards are in title case, following the
+Chicago Manual of Style. Capitalize the first and last words and every major word: nouns,
+pronouns, verbs (including `Is`), adjectives and adverbs. Lowercase articles, the coordinating
+conjunctions `and`, `but`, `for`, `nor` and `or`, and prepositions of up to four letters,
+unless one starts or ends the title.
+
+```markdown
+## Lifecycle and status               ← wrong
+## Lifecycle and Status               ← right
+## Set Up a Clone                     ← right: "Up" is an adverb here
+```
+
+The test checks titles, headings and `<Card>` titles, not link text, and only that major words
+are capitalized: whether a word such as `up` is a preposition or an adverb depends on the
+sentence, so it accepts either case for the minor words. Inline code is left as written.
+
+### No H1 in the Body
 
 The front matter's `title:` is rendered as the page's H1. The body starts at `##`; a `# Title`
 line in it makes a second H1.
 
-### No step or option numbers in headings
+### No Step or Option Numbers in Headings
 
 Use a group heading with unnumbered sub-headings instead:
 
 ```markdown
-## Step 1 — Start the stack         ← wrong
-## Step 2 — Record a change         ← wrong
+## Step 1 — Start the Stack         ← wrong
+## Step 2 — Record a Change         ← wrong
 
 ## Steps                            ← right
-### Start the stack
-### Record a change
+### Start the Stack
+### Record a Change
 ```
 
-### No standalone numbered headings
+### No Standalone Numbered Headings
 
 ```markdown
 ## 1. Changes                       ← wrong
@@ -90,7 +109,7 @@ Use a group heading with unnumbered sub-headings instead:
 If the topics are ordered, the page is a procedure; if they are parallel, an explainer.
 Numbered headings imply an order with no group heading to frame it.
 
-## Describing a change
+## Describing a Change
 
 Horopter serves changes to many tools, and they display a change in different ways, or not at
 all. Describe a change by what Horopter stores and returns: its start, its end if it has one,
@@ -109,7 +128,7 @@ warning the reader must not miss, and `Cards` with `Card` for navigation, as on 
 page. This site adds two, `<HoropterVersion/>` and `<Version name="…"/>`; see "The version
 line" below.
 
-## Runnable steps
+## Runnable Steps
 
 A tutorial's own code blocks are its test. The harness in `scripts/tutorial/` parses a page
 with the MDX parser the site uses, so what it runs is what the reader sees. A marker is a word
@@ -207,7 +226,7 @@ does not see variables setup or the steps exported, but sees the pins and `$DOCS
 after a failed setup too, so it must cope with a world setup only half built. A failing cleanup
 fails the page. It must be a string; anything else fails the page.
 
-## Steps that cannot run
+## Steps That Cannot Run
 
 Before marking a step `manual`, rewrite it as something the harness can check. "The change
 appears on the graph" becomes the same annotation queried through Grafana's API, in a `run`
@@ -215,7 +234,7 @@ block with an `expect` block. Mark a step `manual` only where no check exists, s
 a page in a browser. The report keeps every `manual` step visible, so what is untested is
 never silently trusted.
 
-## The version line
+## The Version Line
 
 The `versions` file at the repository root pins every version the docs name, one `KEY=value`
 line each. `HOROPTER_VERSION` is the Horopter release the docs describe: <HoropterVersion/>

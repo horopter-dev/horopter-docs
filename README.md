@@ -55,7 +55,7 @@ pnpm tutorial scripts/tutorial/fixtures/echo.mdx
 The site's Contributing section documents both halves: the
 [style guide](https://horopter-dev.github.io/horopter-docs/contributing/style-guide/) holds
 the markers and their options, and
-[Testing a tutorial](https://horopter-dev.github.io/horopter-docs/contributing/testing-a-tutorial/)
+[Testing a Tutorial](https://horopter-dev.github.io/horopter-docs/contributing/testing-a-tutorial/)
 holds running them, reading a failure report, bumping a pin, and why fork and Dependabot
 pull requests skip the tutorials.
 
