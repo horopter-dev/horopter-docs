@@ -56,5 +56,14 @@
       datasourceTemplate: "github-releases",
       depNameTemplate: "horopter-dev/horopter",
     },
+    {
+      // A tutorial has the reader set the release by hand; a content test keeps it equal to
+      // the versions file's pin, so both move in the same pull request.
+      customType: "regex",
+      managerFilePatterns: ["/^content/.+\\.mdx$/"],
+      matchStrings: ["(?m)^export HOROPTER_VERSION=(?<currentValue>\\S+)$"],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "horopter-dev/horopter",
+    },
   ],
 }
