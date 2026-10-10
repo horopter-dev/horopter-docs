@@ -1,0 +1,214 @@
+---
+title: Try Horopter
+description: Run Horopter on your machine, record a change, and see it in the terminal and on a Grafana graph.
+cleanup: test ! -f docker-compose.yaml || docker compose --profile grafana down --volumes
+---
+
+Run Horopter on your own machine, record one change, and see it twice: in the terminal, and on
+a Grafana graph as a region over the traffic it caused. It takes about ten minutes. Each step
+below is tested against Horopter <HoropterVersion/>.
+
+<Callout type="warn">
+  Horopter's release files and images are private until the project goes public, so until then
+  these steps work only for someone who can read the `horopter-dev/horopter` repository.
+</Callout>
+
+## Prerequisites
+
+- Docker, with Compose 2.23.1 or later.
+- `curl` and `jq`.
+- Ports 3000, 8080, 8081 and 9090 free on your machine.
+- macOS on Apple silicon, or Linux on x86-64 or arm64.
+
+## Steps
+
+### Choose the Release
+
+Every command below downloads the release this page is tested against, Horopter
+<HoropterVersion/>. Set it in the shell you will use for the rest of the page, in an empty
+directory:
+
+```bash manual
+export HOROPTER_VERSION=v0.9.0
+```
+
+### Start the Stack
+
+Download the release's `docker-compose.yaml` and start it with its `grafana` profile:
+
+```bash run timeout=300
+curl -fsSLO "https://github.com/horopter-dev/horopter/releases/download/$HOROPTER_VERSION/docker-compose.yaml"
+docker compose --profile grafana up --detach --quiet-pull
+```
+
+This starts Postgres; `horopter-migrate`, which creates the schema and exits; `bootstrap`, which
+issues two development keys and exits; `horopter-ingress` on port 8080, which records changes;
+`horopter-egress` on port 8081, which serves them; and, from the `grafana` profile, Prometheus
+on port 9090 and Grafana on port 3000. The ports listen on your machine only.
+
+Wait until ingress and egress answer:
+
+```bash run retry=2
+curl -fsS http://localhost:8080/readyz
+curl -fsS http://localhost:8081/readyz
+```
+
+### Install `horo`
+
+`horo` is Horopter's command line. Download it from the same release into `./bin`:
+
+```bash run
+os=$(uname -s | tr '[:upper:]' '[:lower:]')
+case "$(uname -m)" in
+  x86_64) arch=amd64 ;;
+  *) arch=arm64 ;;
+esac
+mkdir -p bin
+curl -fsSL "https://github.com/horopter-dev/horopter/releases/download/$HOROPTER_VERSION/horo_${HOROPTER_VERSION#v}_${os}_${arch}.tar.gz" \
+  | tar -xz -C bin horo
+export PATH="$PWD/bin:$PATH"
+command -v horo
+```
+
+```text expect
+.../bin/horo
+```
+
+You can also install it with Homebrew, once the project is public:
+
+```bash manual
+brew install horopter-dev/tap/horo
+```
+
+or with Go:
+
+```bash manual
+go install "horopter.dev/horopter/cmd/horo@$HOROPTER_VERSION"
+```
+
+### Point `horo` at the Stack
+
+`horo` reads where Horopter is, and which key to use, from four variables. A producer key may
+record changes and nothing else; a reader key may read them and nothing else. These two are the
+development keys `bootstrap` issued:
+
+```bash run
+export HOROPTER_INGRESS_URL=http://localhost:8080
+export HOROPTER_EGRESS_URL=http://localhost:8081
+export HOROPTER_INGRESS_KEY=horo_dead00000001_00000000000000000000000000000000000000000000000000000000000000
+export HOROPTER_EGRESS_KEY=horo_dead00000002_11111111111111111111111111111111111111111111111111111111111111
+```
+
+### Record a Change
+
+`horo run` records a command as a change: it posts the change's start, runs the command, and
+posts how it ended. Here the command is a 30-second loop of reads from Horopter, there only to
+give the graph something to show:
+
+```bash run timeout=90
+horo run --type deployment --subject demo/app --title "Deploy demo app" -- \
+  sh -c 'end=$(($(date +%s) + 30)); while [ "$(date +%s)" -lt "$end" ]; do horo changes --since 1m > /dev/null; done'
+```
+
+```text expect
+horo: recording dev/... (horo show) — ref ... (--ref)
+```
+
+The line names the change it recorded: `dev/` and a ref that `horo run` made up, since you gave
+it none.
+
+### See It in the Terminal
+
+List the changes of the last hour:
+
+```bash run
+horo changes --since 1h --output table
+```
+
+```text expect
+START...STATUS...REF...SUBJECT...TYPE...TITLE
+...completed  dev/...  demo/app  deployment.completed  Deploy demo app
+```
+
+Then show the change and the events it was built from:
+
+```bash run
+ref=$(horo changes --since 1h | jq -r 'select(.title == "Deploy demo app") | .ref')
+horo show --output table "$ref"
+```
+
+```text expect
+ref:      dev/...
+subject:  demo/app
+type:     deployment.completed
+status:   completed
+title:    Deploy demo app
+start:    ...
+duration: ...
+
+OCCURRED...TYPE...TITLE...ID
+...deployment.started...Deploy demo app...
+...deployment.completed...Deploy demo app...
+```
+
+The change has a start and an end, a title, a subject and a status: `completed`, because the
+command exited 0. It was built from two events, the start and the outcome `horo run` posted.
+
+### See It in Grafana
+
+Open [http://localhost:3000](http://localhost:3000). The Try Horopter dashboard shows the
+requests per second each daemon served over the last 15 minutes, and your change as a region
+over the spike its loop caused.
+
+```text manual
+open http://localhost:3000
+```
+
+![The Try Horopter dashboard zoomed to the last five minutes: egress's request rate climbs to
+about 90 requests per second inside the shaded region of the "Deploy demo app" change, then
+falls back to zero.](./try-horopter-grafana.png)
+
+The spike outlasts the region a little because the graph is a rate over the previous 30
+seconds.
+
+The same check from the shell: wait until Grafana is up with its Infinity plugin, the plugin
+the `Horopter` data source uses to read from egress:
+
+```bash run timeout=180 retry=5
+curl -fsS http://localhost:3000/api/health > /dev/null
+jq -e '.info.version' < <(curl -fsS http://localhost:3000/api/plugins/yesoreyeram-infinity-datasource/settings)
+```
+
+```text expect
+"..."
+```
+
+Then run the dashboard's own annotation query over the last 15 minutes, as Grafana does when it
+draws the dashboard, and print each change's title:
+
+```bash run
+now=$(date +%s000)
+curl -fsS http://localhost:3000/api/dashboards/uid/try-horopter \
+  | jq --arg from "$((now - 900000))" --arg to "$now" \
+    '.dashboard.annotations.list[0] as $a | {from: $from, to: $to, queries: [$a.target + {datasource: $a.datasource}]}' \
+  | curl -fsS -H 'Content-Type: application/json' --data @- http://localhost:3000/api/ds/query \
+  | jq -r '.results[].frames[] | (.schema.fields | map(.name) | index("title")) as $i | .data.values[$i][]'
+```
+
+```text expect
+Deploy demo app
+```
+
+### Clean Up
+
+Stop the stack and delete its data:
+
+```bash manual
+docker compose --profile grafana down --volumes
+```
+
+## What's Next?
+
+- [Concepts](../concepts/index.mdx): what a change is, and the three shapes it takes.
+- Record your Flux deployments, and your GitHub Actions runs: their guides arrive with the
+  public release.

@@ -142,7 +142,9 @@ on a push to `main` that changes `versions`, and when started by hand. Its three
   untested; `setup.mdx`, which must pass, its steps reading what its setup script exported;
   and `wrong-expect.mdx`, which must fail naming its second `run` block.
 - **Plan** lists the pages under `content/` with a line starting `` ```bash run ``, plus
-  `pull-image.mdx`, and checks that the run can read Horopter's images.
+  `pull-image.mdx`, and checks that the run can read Horopter's images. While
+  `horopter-dev/horopter` is private, it leaves out every page that downloads that
+  repository's release files, with a "Tutorial skipped" notice naming it.
 - **Tutorial** runs each listed page in its own job, after logging in to `ghcr.io` with the
   workflow's `GITHUB_TOKEN`.
 
@@ -162,3 +164,16 @@ the image fails Plan, so a run cannot pass having tested nothing.
 
 Skipping those pull requests costs little. A dependency bump changes the site's toolchain, not
 the shell steps a tutorial runs, and the weekly run on `main` still runs every tutorial.
+
+## Why a Page That Downloads Release Files Is Skipped
+
+A reader downloads Horopter's release files, such as its `docker-compose.yaml`, from
+`https://github.com/horopter-dev/horopter/releases/download/`, without logging in. While
+`horopter-dev/horopter` is private those URLs answer 404, and the workflow's `GITHUB_TOKEN`
+cannot read another repository's releases. Plan asks `github.com/horopter-dev/horopter` without
+credentials: when it answers 404, every page under `content/` that names that URL is left out;
+when it answers 200, every page runs, and a missing release file fails its page. Any other
+answer fails Plan.
+
+Until then, follow such a page by hand, downloading each release file with
+`gh release download "$HOROPTER_VERSION" --repo horopter-dev/horopter --pattern <file>`.

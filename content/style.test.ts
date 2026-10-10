@@ -4,6 +4,7 @@ import { createProcessor } from "@mdx-js/mdx";
 import { frontmatter } from "fumadocs-core/content/md/frontmatter";
 import type { Heading, Nodes } from "mdast";
 import { describe, expect, it } from "vitest";
+import { readVersions } from "#lib/versions.ts";
 import { parseTutorial } from "#scripts/tutorial/parse.ts";
 
 const pages = readdirSync(join("content", "docs"), { recursive: true, encoding: "utf8" })
@@ -68,6 +69,19 @@ function rendersHoropterVersion(page: string): boolean {
   return found;
 }
 
+// A reader cannot see the harness's pins, so a page has them set HOROPTER_VERSION by hand.
+function horopterVersionsSetByHand(page: string): string[] {
+  const found: string[] = [];
+  walk(bodyOf(page), (node) => {
+    if (node.type === "code") {
+      for (const match of node.value.matchAll(/^export HOROPTER_VERSION=(\S*)$/gm)) {
+        found.push(match[1] ?? "");
+      }
+    }
+  });
+  return found;
+}
+
 const numbered = /^(?:(?:step|option)\s+\d+|\d+\.)/i;
 
 const minorWords = new Set(
@@ -122,5 +136,10 @@ describe.each(pages)("%s", (page) => {
   it("renders <HoropterVersion/> if it has a bash run block", () => {
     const tutorial = parseTutorial(readFileSync(page, "utf8")).steps.length > 0;
     expect(!tutorial || rendersHoropterVersion(page), "a tutorial states its release").toBe(true);
+  });
+
+  it("sets HOROPTER_VERSION by hand only to the pinned release", () => {
+    const pinned = readVersions().HOROPTER_VERSION;
+    expect(horopterVersionsSetByHand(page).filter((value) => value !== pinned)).toEqual([]);
   });
 });
