@@ -4,9 +4,10 @@ description: Run Horopter on your machine, record a change, and see it in the te
 cleanup: test ! -f docker-compose.yaml || docker compose --profile grafana down --volumes
 ---
 
-Run Horopter on your own machine, record one change, and see it twice: in the terminal, and on
-a Grafana graph as a region over the traffic it caused. It takes about ten minutes. Each step
-below is tested against Horopter <HoropterVersion/>.
+Run Horopter on your own machine, record one change, and see it twice: in the terminal, and in
+Grafana beside the traffic it caused. Each step below is tested against Horopter
+<HoropterVersion/>: by hand until the project goes public, since CI cannot download its
+release files before then, and in CI after.
 
 <Callout type="warn">
   Horopter's release files and images are private until the project goes public, so until then
@@ -58,13 +59,14 @@ curl -fsS http://localhost:8081/readyz
 `horo` is Horopter's command line. Download it from the same release into `./bin`:
 
 ```bash run
-os=$(uname -s | tr '[:upper:]' '[:lower:]')
-case "$(uname -m)" in
-  x86_64) arch=amd64 ;;
-  *) arch=arm64 ;;
+case "$(uname -s)-$(uname -m)" in
+  Darwin-arm64) platform=darwin_arm64 ;;
+  Linux-x86_64) platform=linux_amd64 ;;
+  Linux-aarch64 | Linux-arm64) platform=linux_arm64 ;;
+  *) echo "no horo build for $(uname -s) $(uname -m)" >&2; exit 1 ;;
 esac
 mkdir -p bin
-curl -fsSL "https://github.com/horopter-dev/horopter/releases/download/$HOROPTER_VERSION/horo_${HOROPTER_VERSION#v}_${os}_${arch}.tar.gz" \
+curl -fsSL "https://github.com/horopter-dev/horopter/releases/download/$HOROPTER_VERSION/horo_${HOROPTER_VERSION#v}_${platform}.tar.gz" \
   | tar -xz -C bin horo
 export PATH="$PWD/bin:$PATH"
 command -v horo
@@ -130,10 +132,10 @@ START...STATUS...REF...SUBJECT...TYPE...TITLE
 ...completed  dev/...  demo/app  deployment.completed  Deploy demo app
 ```
 
-Then show the change and the events it was built from:
+Then show the newest change with that title, and the events it was built from:
 
 ```bash run
-ref=$(horo changes --since 1h | jq -r 'select(.title == "Deploy demo app") | .ref')
+ref=$(horo changes --since 1h | jq -rs 'map(select(.title == "Deploy demo app")) | max_by(.start) | .ref')
 horo show --output table "$ref"
 ```
 
@@ -156,12 +158,12 @@ command exited 0. It was built from two events, the start and the outcome `horo 
 
 ### See It in Grafana
 
-Open [http://localhost:3000](http://localhost:3000). The Try Horopter dashboard shows the
-requests per second each daemon served over the last 15 minutes, and your change as a region
-over the spike its loop caused.
+Open Grafana in your browser. The Try Horopter dashboard shows the requests per second each
+daemon served over the last 15 minutes, and your change as a shaded region over the spike its
+loop caused:
 
 ```text manual
-open http://localhost:3000
+http://localhost:3000
 ```
 
 ![The Try Horopter dashboard zoomed to the last five minutes: egress's request rate climbs to
@@ -190,7 +192,7 @@ draws the dashboard, and print each change's title:
 now=$(date +%s000)
 curl -fsS http://localhost:3000/api/dashboards/uid/try-horopter \
   | jq --arg from "$((now - 900000))" --arg to "$now" \
-    '.dashboard.annotations.list[0] as $a | {from: $from, to: $to, queries: [$a.target + {datasource: $a.datasource}]}' \
+    '.dashboard.annotations.list[] | select(.datasource.uid == "horopter") | {from: $from, to: $to, queries: [.target + {datasource}]}' \
   | curl -fsS -H 'Content-Type: application/json' --data @- http://localhost:3000/api/ds/query \
   | jq -r '.results[].frames[] | (.schema.fields | map(.name) | index("title")) as $i | .data.values[$i][]'
 ```
@@ -203,7 +205,7 @@ Deploy demo app
 
 Stop the stack and delete its data:
 
-```bash manual
+```bash run
 docker compose --profile grafana down --volumes
 ```
 

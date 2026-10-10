@@ -94,37 +94,39 @@ jobs:
             echo "::error title=Cannot read Horopter's images::This run cannot read $image. $remedy"
             exit 1
           fi
-      # The pull-image fixture is always listed, so the matrix is never empty. While horopter is
-      # private, its release files cannot be downloaded without a login, so a page that downloads
-      # them is skipped; once the repository answers anonymously, every page runs, and a missing
-      # file fails its page.
+      # The pull-image fixture is always listed, so the matrix is never empty. A page that
+      # downloads horopter's release files is left out while that repository is private.
       - name: List the tutorials
         id: tutorials
         shell: bash
         run: |
           set -euo pipefail
-          releases=https://github.com/horopter-dev/horopter/releases/download/
-          status=$(curl -sS -o /dev/null -w '%{http_code}' https://github.com/horopter-dev/horopter)
+          repository=https://github.com/horopter-dev/horopter
+          tutorials=$(mktemp)
           skipped=$(mktemp)
+          git grep -lE '^```bash run' -- 'content/*.mdx' > "$tutorials" || [ "$?" -eq 1 ]
+          status=$(curl -sS -o /dev/null -w '%{http_code}' "$repository")
           case "$status" in
             200) ;;
             404)
-              git grep -lF "$releases" -- 'content/*.mdx' > "$skipped" || [ "$?" -eq 1 ]
               while IFS= read -r page; do
-                echo "::notice title=Tutorial skipped::$page downloads horopter's release files," \
-                  "which are private until the repository goes public."
-              done < "$skipped"
+                if grep -qF "$repository/releases/download/" "$page"; then
+                  echo "$page" >> "$skipped"
+                  echo "::notice title=Tutorial skipped::$page downloads horopter's release files," \
+                    "which are private until the repository goes public."
+                fi
+              done < "$tutorials"
               ;;
             *)
-              echo "::error::github.com/horopter-dev/horopter answered $status; expected 200 or 404."
+              echo "::error::$repository answered $status; expected 200 or 404."
               exit 1
               ;;
           esac
           pages=$(
             {
-              git grep -lE '^```bash run' -- 'content/*.mdx' || [ "$?" -eq 1 ]
+              grep -vxF -f "$skipped" "$tutorials" || [ "$?" -eq 1 ]
               echo scripts/tutorial/fixtures/pull-image.mdx
-            } | grep -vxF -f "$skipped" | sort | jq -Rnc '[inputs]'
+            } | sort | jq -Rnc '[inputs]'
           )
           echo "pages=$pages" >> "$GITHUB_OUTPUT"
           echo "$pages"

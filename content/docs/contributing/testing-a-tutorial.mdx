@@ -63,10 +63,12 @@ pinned release and so needs the `ghcr.io` login above.
 ### Bump a Pin
 
 Renovate opens the pull request for a pin it watches: `HOROPTER_VERSION`, when Horopter
-publishes a release. Each pin it watches has a matching regex manager in `renovate.json5`; add
-one when you add a pin to `versions`. For any other pin, by hand:
+publishes a release. Each place it updates has a regex manager in `renovate.json5`: the pin's
+line in `versions`, and for `HOROPTER_VERSION` also each page's `export HOROPTER_VERSION=`
+line. Add one when you add a pin to `versions`. For any other pin, by hand:
 
-1. Change the pin's line in `versions`, such as `HOROPTER_VERSION=v0.8.0`.
+1. Change the pin's line in `versions`, such as `HOROPTER_VERSION=v0.8.0`, and for
+   `HOROPTER_VERSION` each page's `export HOROPTER_VERSION=` line with it.
 2. Run every tutorial against it, as above.
 3. Open a pull request.
 
@@ -171,7 +173,7 @@ A reader downloads Horopter's release files, such as its `docker-compose.yaml`, 
 `https://github.com/horopter-dev/horopter/releases/download/`, without logging in. While
 `horopter-dev/horopter` is private those URLs answer 404, and the workflow's `GITHUB_TOKEN`
 cannot read another repository's releases. Plan asks `github.com/horopter-dev/horopter` without
-credentials: when it answers 404, every page under `content/` that names that URL is left out;
+credentials: when it answers 404, every tutorial page that names that URL is left out;
 when it answers 200, every page runs, and a missing release file fails its page. Any other
 answer fails Plan.
 
