@@ -47,7 +47,7 @@
 
   // The versions file holds only KEY=value lines, which its loader enforces, so a pin cannot
   // carry a renovate comment. Each key gets its manager here instead; a pin added to versions
-  // gets one in the same pull request.
+  // gets one in the same pull request, or renovate.test.ts fails.
   customManagers: [
     {
       customType: "regex",
