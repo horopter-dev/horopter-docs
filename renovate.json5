@@ -47,7 +47,7 @@
 
   // The versions file holds only KEY=value lines, which its loader enforces, so a pin cannot
   // carry a renovate comment. Each key gets its manager here instead; a pin added to versions
-  // gets one in the same pull request.
+  // gets one in the same pull request, or renovate.test.ts fails.
   customManagers: [
     {
       customType: "regex",
@@ -55,6 +55,22 @@
       matchStrings: ["(?m)^HOROPTER_VERSION=(?<currentValue>\\S+)$"],
       datasourceTemplate: "github-releases",
       depNameTemplate: "horopter-dev/horopter",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^versions$/"],
+      matchStrings: ["(?m)^GRAFANA_VERSION=(?<currentValue>\\S+)$"],
+      datasourceTemplate: "docker",
+      depNameTemplate: "grafana/grafana",
+    },
+    {
+      // Tagged v4.1.1; Grafana installs the plugin as 4.1.1.
+      customType: "regex",
+      managerFilePatterns: ["/^versions$/"],
+      matchStrings: ["(?m)^INFINITY_VERSION=(?<currentValue>\\S+)$"],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "grafana/grafana-infinity-datasource",
+      extractVersionTemplate: "^v(?<version>.+)$",
     },
     {
       // A tutorial has the reader set the release by hand; a content test keeps it equal to
