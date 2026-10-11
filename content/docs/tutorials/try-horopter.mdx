@@ -30,7 +30,7 @@ Every command below downloads the release this page is tested against, Horopter
 directory:
 
 ```bash manual
-export HOROPTER_VERSION=v0.9.0
+export HOROPTER_VERSION=v0.10.0
 ```
 
 ### Start the Stack
@@ -69,12 +69,16 @@ mkdir -p bin
 curl -fsSL "https://github.com/horopter-dev/horopter/releases/download/$HOROPTER_VERSION/horo_${HOROPTER_VERSION#v}_${platform}.tar.gz" \
   | tar -xz -C bin horo
 export PATH="$PWD/bin:$PATH"
-command -v horo
+horo --version
+test "$(horo --version --format bare)" = "${HOROPTER_VERSION#v}"
 ```
 
 ```text expect
-.../bin/horo
+horo v...
 ```
+
+The last line checks that the `horo` on your `PATH` is the release this page pins. It prints
+nothing when it is.
 
 You can also install it with Homebrew, once the project is public:
 
@@ -124,7 +128,7 @@ it none.
 List the changes of the last hour:
 
 ```bash run
-horo changes --since 1h --output table
+horo changes --since 1h --format table
 ```
 
 ```text expect
@@ -136,7 +140,7 @@ Then show the newest change with that title, and the events it was built from:
 
 ```bash run
 ref=$(horo changes --since 1h | jq -rs 'map(select(.title == "Deploy demo app")) | max_by(.start) | .ref')
-horo show --output table "$ref"
+horo show --format table "$ref"
 ```
 
 ```text expect
