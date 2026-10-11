@@ -62,10 +62,11 @@ pinned release and so needs the `ghcr.io` login above.
 
 ### Bump a Pin
 
-Renovate opens the pull request for a pin it watches: `HOROPTER_VERSION`, when Horopter
-publishes a release. Each place it updates has a regex manager in `renovate.json5`: the pin's
-line in `versions`, and for `HOROPTER_VERSION` also each page's `export HOROPTER_VERSION=`
-line. Add one when you add a pin to `versions`. For any other pin, by hand:
+Renovate opens the pull request when one of the three pins it watches has a new version:
+`HOROPTER_VERSION`, `GRAFANA_VERSION` and `INFINITY_VERSION`. Each place it updates has a
+regex manager in `renovate.json5`: the pin's line in `versions`, and for `HOROPTER_VERSION`
+also each page's `export HOROPTER_VERSION=` line. Add one when you add a pin to `versions`.
+To move a pin by hand:
 
 1. Change the pin's line in `versions`, such as `HOROPTER_VERSION=v0.8.0`, and for
    `HOROPTER_VERSION` each page's `export HOROPTER_VERSION=` line with it.

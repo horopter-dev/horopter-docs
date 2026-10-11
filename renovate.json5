@@ -57,6 +57,22 @@
       depNameTemplate: "horopter-dev/horopter",
     },
     {
+      customType: "regex",
+      managerFilePatterns: ["/^versions$/"],
+      matchStrings: ["(?m)^GRAFANA_VERSION=(?<currentValue>\\S+)$"],
+      datasourceTemplate: "docker",
+      depNameTemplate: "grafana/grafana",
+    },
+    {
+      // Tagged v4.1.1; Grafana installs the plugin as 4.1.1.
+      customType: "regex",
+      managerFilePatterns: ["/^versions$/"],
+      matchStrings: ["(?m)^INFINITY_VERSION=(?<currentValue>\\S+)$"],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "grafana/grafana-infinity-datasource",
+      extractVersionTemplate: "^v(?<version>.+)$",
+    },
+    {
       // A tutorial has the reader set the release by hand; a content test keeps it equal to
       // the versions file's pin, so both move in the same pull request.
       customType: "regex",
