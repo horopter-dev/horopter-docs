@@ -1,0 +1,73 @@
+---
+title: Read Admission
+description: How egress decides whether it can serve a read, and what a refused or cut read means.
+---
+
+`horopter-egress` serves a read only when it has the capacity to. This keeps a burst of
+dashboard refreshes, or one very large read, from exhausting the database's connections or
+egress's memory. This page explains the two checks every read passes and what each answer
+means. It describes Horopter <HoropterVersion/>.
+
+## Two Gates
+
+Every read route passes two gates in turn. The health probes, `/healthz` and `/readyz`, pass
+neither, so an orchestrator sees egress healthy while it refuses reads.
+
+### Concurrency
+
+A limit on how many reads run at once. It starts at the size of egress's database connection
+pool and adapts to how the database is coping:
+
+- A read that waited too long for a connection, or failed to get one, halves the limit.
+- Every other read raises it by one, up to four times the pool's size.
+
+### Memory
+
+A pool of memory that reads reserve against. Before a read runs, egress asks Postgres how large
+its rows are and reserves a multiple of that, which it holds until the response is written.
+
+A read waiting at the memory gate keeps its place under the concurrency limit. Once the memory
+pool is full, later reads are refused at the concurrency gate instead.
+
+## Responses
+
+| answer | means | do |
+| --- | --- | --- |
+| `200` | served in full | |
+| `200` with `X-Horopter-Truncated: true` | served in part: larger than the memory pool, so cut to the oldest rows that fit | narrow the read |
+| `503` with `Retry-After` | a gate could not admit it in time | retry after the interval given |
+| `422` | its first row alone needs more than the whole memory pool | narrow the read, or raise the pool |
+
+A truncated answer looks complete apart from its header, and it drops the most recent rows,
+which during an incident are the ones you want. Narrow the time window, or filter by subject,
+type or status, and repeat the read until the header is gone. The same header marks a read
+cut by egress's row cap.
+
+A `422` comes from a single oversized row, often a long-running change that overlaps every
+window, so narrowing the window does not help. Filter to a subject, type or status that row
+does not have, or, reading events, to one ref. Otherwise raise
+`HOROPTER_EGRESS_READ_MEMORY_BYTES`.
+
+## Sizing
+
+Each egress replica has its own limit and its own pool, and replicas do not coordinate:
+
+- Set the memory pool, `HOROPTER_EGRESS_READ_MEMORY_BYTES`, to about half the memory egress
+  has. At Go's default garbage-collection setting, the heap grows to twice its live size
+  before it is collected.
+- The concurrency limit follows the connection pool, which `pool_max_conns` in
+  `DATABASE_URL` sets. Size every replica's pool together within Postgres's `max_connections`.
+- A read waits at each gate for up to `HOROPTER_EGRESS_ADMISSION_WAIT`, and that wait comes out
+  of egress's write timeout, so keep it short.
+- What egress measures as a connection wait includes opening a new connection and checking an
+  idle one. Set `HOROPTER_EGRESS_DB_WAIT_THRESHOLD` well above the time to open a connection
+  plus a round trip, or ordinary setup reads as congestion and halves the limit.
+
+[Observe Horopter](/how-to/observe-horopter#watch-read-admission) lists the metrics and log
+lines that show how close egress is running to each gate.
+
+## What It Does Not Do
+
+Read admission limits what egress spends on reads. It does not limit how many requests
+arrive: a flood of requests is turned away only once each has reached egress. Put a WAF or
+equivalent in front of it.

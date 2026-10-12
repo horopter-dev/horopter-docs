@@ -1,0 +1,66 @@
+---
+title: Recording a Change
+description: How horo run turns a command into a change, and why recording never blocks the work.
+---
+
+`horo run` wraps a command and records it as one change: a start event before the command
+runs, and an end event saying how it ended. `horo event` records one event on its own. This
+page explains what `horo run` records and what it does when Horopter cannot take it. It
+describes Horopter <HoropterVersion/>.
+
+## What a Run Records
+
+`horo run --type deployment` posts `deployment.started`, then runs the command with its input
+and output untouched. When the command ends, it posts one of three ends, on the same ref:
+
+| the command | `horo run` posts | with |
+| --- | --- | --- |
+| exits 0 | `deployment.completed` | |
+| exits non-zero | `deployment.failed` | the exit code |
+| is ended by a signal | `deployment.cancelled` | the signal |
+
+The type's last segment says what each event means for the change's lifecycle, as
+[What Is Horopter](/concepts/what-is-horopter) describes, so the change opens at the start and
+closes with the command's outcome as its status.
+
+`horo run` exits with the command's own exit code: `128 + n` when signal `n` ended it, and
+`127` when it could not start. A script that wraps a command in `horo run` sees the same exit
+code it saw before.
+
+## Signals
+
+`SIGTERM` sent to `horo` is passed on to the command, and so is `SIGINT` unless `horo` runs
+in the foreground of a terminal. There, Ctrl-C already reaches the command directly, and a
+second interrupt would cut short tools, such as Terraform, that shut down gracefully on the
+first. To stop a wrapped command from another shell, send `horo` `SIGTERM`.
+
+An interrupt before the command starts aborts it: the command is not run, and the change is
+recorded as cancelled.
+
+## Recording Never Blocks the Work
+
+The command matters more than the record of it. If Horopter cannot be reached, or no ingress
+URL or key is set, `horo run` warns and runs the command anyway:
+
+- It waits at most 10 seconds for the start to be recorded. If the start was not recorded, it
+  does not record the end either, so it never leaves an end without a start.
+- If Horopter fails while the command runs, it retries the end for up to 30 seconds after the
+  command ends. Ctrl-C stops that wait.
+
+`--strict` reverses the priority, for a pipeline that must not change anything unrecorded: it
+refuses to run the command when the start cannot be recorded, and fails when the end cannot.
+
+## Finding and Repairing the Change
+
+`horo run` prints the change's ref on stderr in both forms: the stored `<locus>/<ref>`, which
+`horo show` takes, and the plain ref, which `horo event --ref` takes to add another event to
+the same change.
+
+If the end cannot be confirmed, `horo run` prints the `horo event` command that closes the
+change. That command carries the time the command ended and the end's own idempotency key, so
+running it later is safe even if the end did arrive: Horopter stores the end once.
+
+A wrapper that needs to know what was recorded, such as a CI step writing a summary, can ask
+`horo run` for a report with `--report <path>`. It is a JSON file saying whether the start and
+end were posted, the ref, how the command ended, and why the change was not recorded in full,
+if it was not.

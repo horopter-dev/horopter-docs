@@ -1,0 +1,139 @@
+---
+title: Observe Horopter
+description: Read Horopter's logs, scrape its metrics, send its traces, and know what to alert on.
+---
+
+Horopter reports on its own operation: logs on stderr, Prometheus metrics, and OpenTelemetry
+traces and metrics. This telemetry describes Horopter's own requests and database calls, never
+the events producers post. This guide is for Horopter <HoropterVersion/>.
+
+## Goal
+
+Horopter's logs read, its metrics scraped, its traces sent to a collector, and alerts on the
+signals that mean something is wrong.
+
+## Prerequisites
+
+- `horopter-ingress` and `horopter-egress` running, configured through their environment.
+- A Prometheus-compatible scraper, an OpenTelemetry collector, or both.
+
+## Steps
+
+### Read the Logs
+
+Every binary logs JSON to stderr, one object per line. Every request writes one line with
+`"msg": "request"`, except the health probes: its method, route, status, duration and size,
+the tenant and the credential's prefix once a credential resolves, and the error message the
+client received. Keys, request bodies, attributes and client addresses are never logged.
+
+Follow the request lines of a compose stack's ingress:
+
+```bash manual
+docker compose logs --no-log-prefix -f ingress | jq -R 'fromjson? | select(.msg == "request")'
+```
+
+`--no-log-prefix` matters: without it, compose prepends the service's name to each line, which
+then no longer parses as JSON. Set `HOROPTER_LOG_LEVEL` to `debug`, `info`, `warn` or `error`
+to choose the least severe level logged.
+
+### Scrape the Metrics
+
+Both daemons serve Prometheus metrics at `/metrics` on a listener of their own, on port 9464 by
+default. It binds `localhost`, which is reachable only from inside the same container or pod.
+To scrape it over the network, bind it to every interface:
+
+```bash manual
+export OTEL_EXPORTER_PROMETHEUS_HOST=0.0.0.0
+```
+
+If both daemons run in one pod or on one host, give one of them another port with
+`OTEL_EXPORTER_PROMETHEUS_PORT`.
+
+The listener needs no credential, so keep it off any network a stranger can reach, and put
+nothing sensitive in `OTEL_RESOURCE_ATTRIBUTES`; see
+[What Horopter Leaves to You](/concepts/credentials-and-capabilities#what-horopter-leaves-to-you).
+
+### Send Traces to a Collector
+
+Tracing is off unless a collector is configured. Point every binary at an OTLP/HTTP collector:
+
+```bash manual
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+```
+
+That turns on traces, and pushes the same metrics over OTLP. To send only traces, set
+`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` instead. A backend should not both scrape a daemon's
+`/metrics` and receive its OTLP metrics, or it stores every series twice.
+
+Tracing covers three areas: `http`, a span for each request; `store`, a span for each store
+operation; and `sql`, a span for each SQL statement. Silence the per-statement spans on egress,
+where a dashboard refreshing every few seconds turns them into a constant stream that adds
+little:
+
+```bash manual
+export HOROPTER_TRACE_DISABLE=sql
+```
+
+Keep them on ingress, where an append runs several statements in one transaction and a
+per-statement span is the only way to see which one is slow. `HOROPTER_TRACE_DISABLE` accepts
+any name without checking it, so a misspelled area disables nothing.
+
+`OTEL_SDK_DISABLED=true` turns all telemetry off, the metrics listener included.
+
+### Watch Ingress
+
+`horopter_event_appends_total` counts every event submitted, by outcome. Watch the
+`failed` outcome: a sustained rate means producers' events are being refused or failing.
+
+`horopter_refold_total` counts changes Horopter derived again because an event arrived out of
+order. Alert on its `horopter_refold_altered="true"` series, the rate at which late events are
+changing a recorded outcome, status or end.
+
+### Watch Read Admission
+
+[Read Admission](/concepts/read-admission) explains the two gates egress puts every read
+through. Alert on:
+
+- `horopter_read_shed_total`, by `horopter_read_shed_gate`: a sustained rate means reads are
+  being refused with `503`.
+- `read shed` and `read too large` log lines at `WARN`, one for each refused read, naming the
+  route, the tenant and the gate's figures.
+- `read concurrency limit halved` at `WARN`, each time reads found the connection pool
+  congested.
+
+How close egress runs to each gate is `horopter_read_admission_in_flight` against
+`horopter_read_admission_limit`, and `horopter_read_memory_reserved_bytes` against
+`horopter_read_memory_capacity_bytes`. When reads are refused at the concurrency gate, check
+the memory pool too: reads waiting for memory hold their place under the concurrency limit.
+
+## Verification
+
+- Once ingress has taken one event, its metrics list `horopter_event_appends_total`. From
+  inside the daemon's network namespace, or with the port published:
+
+  ```bash manual
+  curl -fsS localhost:9464/metrics | grep horopter_event_appends_total
+  ```
+- With a collector configured, a request to either daemon appears as a trace with an `http`
+  span, and log lines written during it carry `trace_id` and `span_id`.
+
+## Notes
+
+### When Telemetry Fails
+
+- **A metrics listener that cannot start stops the daemon**, with an error naming the variable
+  and its value: a port out of range, a host that does not resolve, or an address in use.
+- **A collector never stops a daemon.** If tracing or OTLP metrics cannot be set up, the binary
+  logs one `ERROR` line naming the cause and carries on without them. That line is the only
+  sign that export is configured but not running.
+- **A malformed `OTEL_EXPORTER_OTLP_*` value** is logged at `ERROR` by OpenTelemetry, which then
+  falls back to its own defaults, so the exporter sends somewhere you did not intend. Treat
+  such a line at startup as a broken configuration.
+- **A collector that is down** is logged at `WARN`. Spans buffered while it is down are lost;
+  metric totals survive, because every push carries running totals.
+
+### No Caller-Chosen Labels
+
+No metric carries a tenant, a ref, an event id or any other value a caller chooses, so no
+caller can create series without limit. Per-request detail, tenant included, is on the trace
+spans.

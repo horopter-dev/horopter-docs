@@ -1,0 +1,62 @@
+---
+title: Attributes
+description: What belongs in an event's attributes, what does not, and where they go once posted.
+---
+
+An event's `attributes` hold any further JSON its producer wants to keep with it: a service's
+version, the pipeline that ran, a description. This page explains what belongs there and what
+happens to it once posted. It describes Horopter <HoropterVersion/>.
+
+## Who Decides What Goes In
+
+`attributes` is free-form. Horopter stores what a producer sends and cannot know what it
+holds, so what goes in it is the responsibility of whoever runs the producer.
+
+Put **identifiers and short text** there: a version, an environment name, a pipeline run's id,
+a one-paragraph description. For anything larger or more sensitive, put a link to where it
+lives instead. Horopter refuses an event whose attributes are larger than a few kilobytes of
+JSON, so a release note or a log excerpt is a link, not a value.
+
+## No Secrets, No Personal Data
+
+**Never put a secret or personal data in an attribute.** Not a token, a password, or a
+connection string with credentials in it; not a name, an email address or anything else that
+identifies a person.
+
+What a producer posts does not stay in one place. Every attribute is:
+
+- stored in Horopter's event log, which is append-only;
+- served to every reader of the tenant, and through every adapter you configure, such as
+  Grafana annotations and OpenTelemetry spans, which keep copies of their own;
+- in your database's backups and write-ahead log archives.
+
+Erasing it from Horopter's database does not erase those copies.
+
+## If a Secret Lands There
+
+**Rotate it first.** Treat the secret as exposed from the moment it was posted, and replace it
+wherever it is used. Removing it from Horopter afterwards is hygiene, not a fix: by then any
+reader of the tenant, and any tool fed by an adapter, may have it.
+
+## Keys
+
+Attribute keys follow the [OpenTelemetry semantic
+conventions](https://opentelemetry.io/docs/specs/semconv/) rather than a vocabulary of
+Horopter's own, so any tool that understands OpenTelemetry understands them. The keys worth
+aiming for:
+
+- `service.name`, `service.version`
+- `deployment.environment.name`
+- `cicd.pipeline.name`, `cicd.pipeline.result`, `cicd.pipeline.task.name`,
+  `cicd.pipeline.task.run.id`, `cicd.pipeline.task.run.result`
+- `cloudevents.event_id`, `cloudevents.event_source`, `cloudevents.event_type`,
+  `cloudevents.event_subject`
+
+Nothing rejects a key outside this list: it is a convention, not a schema. Of these keys,
+readers can filter changes by `deployment.environment.name`.
+
+### `horopter.description`
+
+One key is Horopter's own, because no OpenTelemetry convention covers it.
+`horopter.description` is a change's longer description, which the Grafana annotations adapter
+returns as each annotation's text. A bare `description` key is not read for this.
