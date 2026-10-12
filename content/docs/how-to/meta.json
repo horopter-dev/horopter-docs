@@ -1,6 +1,7 @@
 {
   "title": "How-to Guides",
   "pages": [
+    "install-kubernetes",
     "issue-credentials",
     "observe-horopter",
     "re-fold-one-change",
