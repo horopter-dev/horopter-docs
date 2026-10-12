@@ -1,0 +1,74 @@
+---
+title: Rebuild a Tenant's Projection
+description: Discard every stored change in a tenant and derive them again from its event log.
+---
+
+Every change Horopter serves is derived from the event log, so the stored changes can be
+discarded and derived again. A rebuild does that for a whole tenant at once, and halts that
+tenant's ingest while it runs. This guide is for Horopter <HoropterVersion/>.
+
+## Goal
+
+Every change in one tenant derived again from its events, when more changes are wrong than
+you can [re-fold one at a time](/how-to/re-fold-one-change).
+
+## Prerequisites
+
+- `horopter-migrate`, or `horoctl`, at the release the daemons run.
+- `DATABASE_URL` set to the database's connection string, or `--dsn`.
+- The tenant's id, which `horoctl admin keys list` shows beside each credential.
+- `horo`, with `HOROPTER_EGRESS_URL` and a reader key in `HOROPTER_EGRESS_KEY`, to compare
+  changes before and after.
+- A quiet time for the tenant's producers: see the warning below.
+
+<Callout type="warn">
+  **A rebuild blocks every append to the tenant for as long as it runs.** Blocked appends fail
+  after a few seconds with a `503`, which producers retry, so no event is lost; but the rebuild
+  is not batched, reports no progress, and cannot run alongside ingest. Run it when the
+  tenant's write traffic is quiet. Other tenants are not affected.
+</Callout>
+
+## Steps
+
+### Record What You Will Compare
+
+A rebuild can change a stored change's subject, type, title, actor, attributes, end or status:
+a change shown as `completed` can read `failed` afterwards. For each change you will need to
+explain, save its events and the change as it is now:
+
+```bash manual
+horo show --json ci/dep-1 > before-ci-dep-1.json
+```
+
+### Run the Rebuild
+
+```bash manual
+horopter-migrate --rebuild-tenant=<tenant-id>
+```
+
+or, with `horoctl`:
+
+```bash manual
+horoctl migrate --rebuild-tenant=<tenant-id>
+```
+
+It first applies any pending migrations and checks the schema version, then discards the
+tenant's changes and replays its event log in order.
+
+## Verification
+
+The command exits 0. Compare the changes you saved:
+
+```bash manual
+horo show --json ci/dep-1 > after-ci-dep-1.json
+diff before-ci-dep-1.json after-ci-dep-1.json
+```
+
+## Notes
+
+- **Prefer a re-fold** whenever you can name the changes that are wrong. It repairs one change
+  with ingest running.
+- **A rebuild is self-consistent, not causally correct.** It derives each change from its events
+  in the order Horopter received them. Two events received in the same millisecond have an
+  arbitrary order, and a producer that sends its events in the wrong order is beyond what a
+  rebuild can repair.

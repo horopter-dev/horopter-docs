@@ -1,0 +1,75 @@
+---
+title: Re-fold One Change
+description: Repair one stored change by rebuilding it from its events, with ingest running.
+---
+
+A change is derived from its events: Horopter folds them, in order, into the change it serves.
+If one stored change is wrong, re-folding it derives it again from its events and stores the
+result. This guide is for Horopter <HoropterVersion/>.
+
+## Goal
+
+One change whose stored start, end, status or title disagrees with its events, repaired while
+ingest keeps running.
+
+## Prerequisites
+
+- `horo` at the same release.
+- A credential with the `admin` capability: `tenant_admin` or `superuser`. See
+  [Issue Credentials](/how-to/issue-credentials).
+- The change's stored ref, as `horo show` prints it, such as `ci/dep-1`.
+
+## Steps
+
+### Point `horo` at Ingress
+
+A re-fold is a write, so it goes to ingress. `horo refold` reads the key from
+`HOROPTER_ADMIN_KEY`, or `--key`, and never from `HOROPTER_INGRESS_KEY`, so an admin key never
+sits where `horo run` would send it:
+
+```bash manual
+export HOROPTER_INGRESS_URL=http://localhost:8080
+export HOROPTER_ADMIN_KEY=<tenant_admin or superuser key>
+```
+
+### Re-fold It
+
+```bash manual
+horo refold ci/dep-1
+```
+
+With a global `superuser` key, name the tenant too, before the ref:
+
+```bash manual
+horo refold --tenant <tenant-id> ci/dep-1
+```
+
+Without `horo`, post the ref to ingress, adding `"tenant": "<tenant-id>"` to the body for a
+global `superuser` key:
+
+```bash manual
+curl -fsS -X POST "$HOROPTER_INGRESS_URL/v1/admin/refold" \
+  -H "Authorization: Bearer $HOROPTER_ADMIN_KEY" -H 'Content-Type: application/json' \
+  -d '{"ref":"ci/dep-1"}'
+```
+
+## Verification
+
+The answer says how many events were read, and which of the stored change's fields the re-fold
+repaired:
+
+```json
+{"ref":"ci/dep-1","events":12,"altered":["end","status"]}
+```
+
+`"altered": []` means the stored change was already right. `horo show ci/dep-1` shows the
+repaired change beside its events.
+
+## Notes
+
+- **Ingest carries on.** A re-fold takes the same locks an append does: appends to every other
+  ref carry on, and one to the same ref waits a moment. Prefer it to
+  [rebuilding the tenant](/how-to/rebuild-a-tenants-projection) whenever you can name the
+  change.
+- **A ref with no events** is answered `404`, and `horo refold` exits `3`.
+- **A key without `admin`** is answered `403`, and `horo refold` names the capability it needs.

@@ -1,0 +1,9 @@
+{
+  "title": "How-to Guides",
+  "pages": [
+    "issue-credentials",
+    "observe-horopter",
+    "re-fold-one-change",
+    "rebuild-a-tenants-projection"
+  ]
+}

@@ -1,4 +1,10 @@
 {
   "title": "Concepts",
-  "pages": ["what-is-horopter"]
+  "pages": [
+    "what-is-horopter",
+    "recording-a-change",
+    "attributes",
+    "credentials-and-capabilities",
+    "read-admission"
+  ]
 }
