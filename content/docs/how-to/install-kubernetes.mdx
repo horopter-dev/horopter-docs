@@ -1,0 +1,333 @@
+---
+title: Install Horopter in Kubernetes
+description: Install Horopter's Helm chart against your Postgres, and create its first tenant.
+setup: $DOCS_ROOT/journeys/install-kubernetes/setup.sh
+setup-timeout: 600
+cleanup: $DOCS_ROOT/journeys/install-kubernetes/cleanup.sh
+---
+
+Horopter's chart runs its two daemons, ingress, which records changes, and egress, which serves
+them, against a Postgres you run. Each step below is tested against Horopter
+<HoropterVersion/>, chart <Version name="HOROPTER_CHART_VERSION"/>.
+
+<Callout type="warn">
+  Horopter's images and chart are private until the project goes public, so until then these
+  steps work only for a cluster that can pull from `ghcr.io/horopter-dev`.
+</Callout>
+
+## Goal
+
+Horopter running in your cluster, its ingress reachable by the producers that will record
+changes and its egress by you, and a tenant for them to record into.
+
+## Prerequisites
+
+- A Kubernetes cluster, and `kubectl` with access to it.
+- [Helm](https://helm.sh/).
+- `jq`.
+- Postgres 13 or later, or the CloudNativePG operator installed below.
+
+Tested with Kubernetes <Version name="KUBERNETES_VERSION"/> on kind <Version name="KIND_VERSION"/>,
+Helm <Version name="HELM_VERSION"/>, and CloudNativePG <Version name="CNPG_VERSION"/> with the
+Postgres it installs by default.
+
+## Steps
+
+### Choose the Versions
+
+Set the chart release, and the two outside versions the steps below use, in the shell you will
+use for the rest of the page:
+
+```bash manual
+export HOROPTER_CHART_VERSION=0.8.0
+export CNPG_VERSION=1.30.1
+export CURL_VERSION=8.22.0
+```
+
+### Choose Names
+
+```bash run
+export HOROPTER_NAMESPACE=horopter
+export HOROPTER_RELEASE=horopter
+export HOROPTER_DB_CLUSTER=horopter-db
+export HOROPTER_DATABASE_SECRET=$HOROPTER_DB_CLUSTER-app
+```
+
+Change them here and every later command follows; the output shown on this page uses these
+names.
+
+### Provide Postgres
+
+Horopter needs a Secret in its namespace whose `uri` key holds a connection URI to a database
+its role owns. It needs no extension and no superuser. The chart runs Horopter's migrations
+against that database before every install and upgrade.
+
+If you already run Postgres, create that Secret and skip to the next step. Otherwise, this
+installs the [CloudNativePG](https://cloudnative-pg.io/) operator and a one-instance cluster,
+whose generated `-app` Secret already has that shape:
+
+```bash run timeout=300
+kubectl apply --server-side \
+  -f "https://github.com/cloudnative-pg/cloudnative-pg/releases/download/v$CNPG_VERSION/cnpg-$CNPG_VERSION.yaml"
+kubectl rollout status deployment/cnpg-controller-manager --namespace cnpg-system --timeout 240s
+```
+
+```bash run timeout=300
+kubectl create namespace "$HOROPTER_NAMESPACE"
+kubectl apply --namespace "$HOROPTER_NAMESPACE" -f - << EOF
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: $HOROPTER_DB_CLUSTER
+spec:
+  instances: 1
+  storage:
+    size: 1Gi
+EOF
+kubectl wait cluster "$HOROPTER_DB_CLUSTER" --namespace "$HOROPTER_NAMESPACE" \
+  --for condition=Ready --timeout 240s
+```
+
+```text expect
+namespace/horopter created
+cluster.postgresql.cnpg.io/horopter-db created
+cluster.postgresql.cnpg.io/horopter-db condition met
+```
+
+Check the Postgres it runs is 13 or later:
+
+```bash run
+kubectl exec "$HOROPTER_DB_CLUSTER-1" --namespace "$HOROPTER_NAMESPACE" --container postgres -- \
+  psql --tuples-only --no-align \
+  --command "SELECT current_setting('server_version_num')::int >= 130000"
+```
+
+```text expect
+t
+```
+
+Raise `instances` for a standby that takes over when the primary fails. Backups and tuning are
+in [CloudNativePG's documentation](https://cloudnative-pg.io/documentation/current/).
+
+### Install the Chart
+
+```bash run timeout=600
+helm install "$HOROPTER_RELEASE" oci://ghcr.io/horopter-dev/charts/horopter \
+  --version "$HOROPTER_CHART_VERSION" \
+  --namespace "$HOROPTER_NAMESPACE" \
+  --set database.existingSecret="$HOROPTER_DATABASE_SECRET" \
+  --wait
+```
+
+```text expect
+Pulled: ghcr.io/horopter-dev/charts/horopter:...
+Digest: sha256:...
+NAME: horopter
+LAST DEPLOYED: ...
+NAMESPACE: horopter
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+TEST SUITE: None
+NOTES:
+Horopter v... is installed as release horopter.
+
+In the cluster:
+  ingress (writes): http://horopter-ingress.horopter.svc:8080
+  egress (reads):   http://horopter-egress.horopter.svc:8081
+
+Outside the cluster:
+  ingress: not exposed (ingress.httpRoute or ingress.kubernetesIngress)
+  egress:  not exposed (egress.httpRoute or egress.kubernetesIngress)
+...
+```
+
+`--wait` returns once both daemons answer their readiness probes. The notes list each
+daemon's URL in the cluster, and how it is exposed outside it. The chart's README is its
+values reference; `helm show readme oci://ghcr.io/horopter-dev/charts/horopter --version
+"$HOROPTER_CHART_VERSION"` prints it.
+
+### Expose Ingress and Egress
+
+Both daemons have a ClusterIP Service. Producers in the cluster, such as the Flux client, reach
+ingress through its Service. Expose a daemon outside the cluster by a Gateway API `HTTPRoute`
+or by an `Ingress` resource, whichever your cluster's controller serves, through the chart's
+values.
+
+<Callout type="warn">
+  Exposing ingress puts a write endpoint on the internet. Every write needs a producer key, but
+  ingress does not limit the rate of writes, so a leaked key or a producer retrying in a loop
+  writes as fast as Postgres accepts. Expose ingress only for producers outside the cluster,
+  such as GitHub-hosted runners.
+</Callout>
+
+<Tabs items={["HTTPRoute", "Ingress"]}>
+  <Tab value="HTTPRoute">
+
+Name the `Gateway` each route attaches to, and the hostname it serves:
+
+```yaml manual
+ingress:
+  httpRoute:
+    enabled: true
+    parentRefs:
+      - name: my-gateway
+        namespace: gateway-system
+    hostnames: [horopter-ingress.example.com]
+egress:
+  httpRoute:
+    enabled: true
+    parentRefs:
+      - name: my-gateway
+        namespace: gateway-system
+    hostnames: [horopter-egress.example.com]
+```
+
+  </Tab>
+  <Tab value="Ingress">
+
+Name the host each `Ingress` serves, and its class and TLS if your controller needs them:
+
+```yaml manual
+ingress:
+  kubernetesIngress:
+    enabled: true
+    className: nginx
+    host: horopter-ingress.example.com
+    tls:
+      - secretName: horopter-ingress-tls
+        hosts: [horopter-ingress.example.com]
+egress:
+  kubernetesIngress:
+    enabled: true
+    className: nginx
+    host: horopter-egress.example.com
+    tls:
+      - secretName: horopter-egress-tls
+        hosts: [horopter-egress.example.com]
+```
+
+  </Tab>
+</Tabs>
+
+Leave out the daemon you do not expose. Save the values as `exposure.yaml`, and apply them:
+
+```bash manual
+helm upgrade "$HOROPTER_RELEASE" oci://ghcr.io/horopter-dev/charts/horopter \
+  --version "$HOROPTER_CHART_VERSION" \
+  --namespace "$HOROPTER_NAMESPACE" \
+  --reuse-values --values exposure.yaml --wait
+```
+
+### Set Your URLs
+
+Set ingress's URL as your producers reach it, and egress's as you reach it: the Service for a
+client in the cluster, and the route's or `Ingress`'s hostname otherwise.
+
+```bash manual
+export HOROPTER_INGRESS_URL=http://horopter-ingress.horopter.svc:8080
+export HOROPTER_EGRESS_URL=https://horopter-egress.example.com
+```
+
+With egress not exposed, forward a port to its Service and use
+`export HOROPTER_EGRESS_URL=http://localhost:8081`, keeping this running in another shell:
+
+```bash manual
+kubectl port-forward --namespace "$HOROPTER_NAMESPACE" service/horopter-egress 8081:8081
+```
+
+`helm status "$HOROPTER_RELEASE" --namespace "$HOROPTER_NAMESPACE"` lists both Services' URLs
+and how each daemon is exposed.
+
+### Create a Tenant
+
+`horoctl` manages tenants and credentials directly in Horopter's database, so it runs in the
+cluster, in a pod that reads the database Secret. Define two functions: `in_cluster` runs one
+container, given as JSON in a pod spec's shape, until it exits, prints its log and deletes its
+pod; `horoctl` runs `horoctl` that way, at the release the chart installed.
+
+```bash run
+in_cluster() {
+  local pod overrides phase
+  pod=in-cluster-$RANDOM
+  overrides=$(jq -n --arg pod "$pod" --argjson container "$1" \
+    '{spec: {containers: [$container + {name: $pod}]}}')
+  kubectl run "$pod" --namespace "$HOROPTER_NAMESPACE" --restart Never \
+    --image "$(jq -r .image <<< "$1")" --overrides "$overrides" > /dev/null
+  for _ in $(seq 120); do
+    phase=$(kubectl get pod "$pod" --namespace "$HOROPTER_NAMESPACE" -o jsonpath='{.status.phase}')
+    [[ $phase == Succeeded || $phase == Failed ]] && break
+    sleep 1
+  done
+  kubectl logs "$pod" --namespace "$HOROPTER_NAMESPACE"
+  kubectl delete pod "$pod" --namespace "$HOROPTER_NAMESPACE" --wait=false > /dev/null
+  [[ $phase == Succeeded ]]
+}
+
+horoctl() {
+  local image
+  image=ghcr.io/horopter-dev/horoctl:$(helm get metadata "$HOROPTER_RELEASE" \
+    --namespace "$HOROPTER_NAMESPACE" --output json | jq -r .appVersion)
+  in_cluster "$(printf '%s\n' "$@" | jq -Rn --arg image "$image" \
+    --arg secret "$HOROPTER_DATABASE_SECRET" '{image: $image, args: [inputs],
+      env: [{name: "DATABASE_URL", valueFrom: {secretKeyRef: {name: $secret, key: "uri"}}}]}')"
+}
+```
+
+`kubectl run --rm -i` is not used: it attaches after a short-lived container has often exited,
+and then prints a warning and the output twice.
+
+A pod's log holds its stdout and stderr together, in no fixed order, so take a value from it
+by its form. Create the tenant your producers record into, and keep its id, which starts
+`tnt_`:
+
+```bash run timeout=180
+TENANT_ID=$(horoctl admin tenant create --display-name acme | grep -x 'tnt_[0-9a-f]*')
+export TENANT_ID
+echo "$TENANT_ID"
+```
+
+```text expect
+tnt_...
+```
+
+Issue each producer and reader its credential with `horoctl admin keys issue`, run through the
+same function. [Issue Credentials](./issue-credentials.mdx) explains its flags.
+
+## Verification
+
+Egress answers from your machine:
+
+```bash run retry=2
+curl -fsS "$HOROPTER_EGRESS_URL/readyz"
+```
+
+```text expect
+{"status":"ready"}
+```
+
+Ingress answers from a throwaway pod in the cluster, which reaches it by either form of its URL:
+
+```bash run timeout=180
+in_cluster "$(jq -n --arg image "curlimages/curl:$CURL_VERSION" \
+  --arg url "$HOROPTER_INGRESS_URL/readyz" '{image: $image, args: ["-fsS", $url]}')"
+```
+
+```text expect
+{"status":"ready"}
+```
+
+## What's Next?
+
+Keep five values for the producers you set up next: `HOROPTER_NAMESPACE`,
+`HOROPTER_DATABASE_SECRET`, `TENANT_ID`, `HOROPTER_INGRESS_URL` and `HOROPTER_EGRESS_URL`.
+
+- [Issue Credentials](./issue-credentials.mdx) for each producer and reader.
+- [Observe Horopter](./observe-horopter.mdx): its logs, metrics and traces, and what to alert
+  on.
+
+## Upgrading
+
+Install a newer chart release by the same `helm upgrade` command with its `--version` and
+`--reuse-values`. The chart runs the new release's migrations before its daemons start. Read
+the chart's CHANGELOG first: a breaking change is listed there. Upgrading is not tested here.

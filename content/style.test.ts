@@ -4,7 +4,7 @@ import { createProcessor } from "@mdx-js/mdx";
 import { frontmatter } from "fumadocs-core/content/md/frontmatter";
 import type { Heading, Nodes } from "mdast";
 import { describe, expect, it } from "vitest";
-import { readVersions } from "#lib/versions.ts";
+import { readVersions, type Versions } from "#lib/versions.ts";
 import { parseTutorial } from "#scripts/tutorial/parse.ts";
 
 const pages = readdirSync(join("content", "docs"), { recursive: true, encoding: "utf8" })
@@ -69,13 +69,16 @@ function rendersHoropterVersion(page: string): boolean {
   return found;
 }
 
-// A reader cannot see the harness's pins, so a page has them set HOROPTER_VERSION by hand.
-function horopterVersionsSetByHand(page: string): string[] {
-  const found: string[] = [];
+// A reader cannot see the harness's pins, so a page has them set each pin its steps read by hand.
+function pinsSetByHand(page: string, pinned: Versions): [string, string][] {
+  const exportLine = /^export ([A-Z][A-Z0-9_]*)=(\S*)$/gm;
+  const found: [string, string][] = [];
   walk(bodyOf(page), (node) => {
     if (node.type === "code") {
-      for (const match of node.value.matchAll(/^export HOROPTER_VERSION=(\S*)$/gm)) {
-        found.push(match[1] ?? "");
+      for (const [, key = "", value = ""] of node.value.matchAll(exportLine)) {
+        if (key in pinned) {
+          found.push([key, value]);
+        }
       }
     }
   });
@@ -138,8 +141,9 @@ describe.each(pages)("%s", (page) => {
     expect(!tutorial || rendersHoropterVersion(page), "a tutorial states its release").toBe(true);
   });
 
-  it("sets HOROPTER_VERSION by hand only to the pinned release", () => {
-    const pinned = readVersions().HOROPTER_VERSION;
-    expect(horopterVersionsSetByHand(page).filter((value) => value !== pinned)).toEqual([]);
+  it("sets a pin by hand only to its pinned value", () => {
+    const pinned = readVersions();
+    const differing = pinsSetByHand(page, pinned).filter(([key, value]) => pinned[key] !== value);
+    expect(differing).toEqual([]);
   });
 });

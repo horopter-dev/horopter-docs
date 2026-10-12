@@ -62,14 +62,13 @@ pinned release and so needs the `ghcr.io` login above.
 
 ### Bump a Pin
 
-Renovate opens the pull request when one of the three pins it watches has a new version:
-`HOROPTER_VERSION`, `GRAFANA_VERSION` and `INFINITY_VERSION`. Each place it updates has a
-regex manager in `renovate.json5`: the pin's line in `versions`, and for `HOROPTER_VERSION`
-also each page's `export HOROPTER_VERSION=` line. Add one when you add a pin to `versions`:
-`pnpm test` fails on a pin no manager updates. To move a pin by hand:
+Renovate opens the pull request when a pin in `versions` has a new version. Each pin has a
+regex manager in `renovate.json5`, which updates the pin's line in `versions` and, for a pin a
+page has the reader set by hand, each page's `export KEY=` line with it. Add one when you add a
+pin to `versions`: `pnpm test` fails on a pin no manager updates. To move a pin by hand:
 
-1. Change the pin's line in `versions`, such as `HOROPTER_VERSION=v0.8.0`, and for
-   `HOROPTER_VERSION` each page's `export HOROPTER_VERSION=` line with it.
+1. Change the pin's line in `versions`, such as `HOROPTER_VERSION=v0.8.0`, and each page's
+   `export` line for that pin, such as `export HOROPTER_VERSION=v0.8.0`, with it.
 2. Run every tutorial against it, as above.
 3. Open a pull request.
 

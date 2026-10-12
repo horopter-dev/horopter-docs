@@ -39,9 +39,12 @@
       enabled: false,
     },
     {
-      // Horopter's own release: the tutorials should test it as soon as it is out.
-      matchDepNames: ["horopter-dev/horopter"],
+      // Horopter's own releases: the tutorials should test them as soon as they are out. One
+      // pull request moves both, since the install how-to fails when the chart's appVersion is
+      // not HOROPTER_VERSION; it goes green once the chart release carrying it is out.
+      matchDepNames: ["horopter-dev/horopter", "horopter-dev/helm-charts"],
       minimumReleaseAge: null,
+      groupName: "horopter",
     },
   ],
 
@@ -70,6 +73,57 @@
       matchStrings: ["(?m)^INFINITY_VERSION=(?<currentValue>\\S+)$"],
       datasourceTemplate: "github-releases",
       depNameTemplate: "grafana/grafana-infinity-datasource",
+      extractVersionTemplate: "^v(?<version>.+)$",
+    },
+    // A pin a page's steps read is also set by hand on that page, in an `export KEY=value`
+    // line that a content test keeps equal to the versions file's, so each such manager reads
+    // both files and one pull request moves both.
+    {
+      // The repository releases two charts, tagged horopter-0.8.0 and horopter-flux-0.3.0.
+      customType: "regex",
+      managerFilePatterns: ["/^versions$/", "/^content/.+\\.mdx$/"],
+      matchStrings: ["(?m)^(?:export )?HOROPTER_CHART_VERSION=(?<currentValue>\\S+)$"],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "horopter-dev/helm-charts",
+      extractVersionTemplate: "^horopter-(?<version>\\d.*)$",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^versions$/", "/^content/.+\\.mdx$/"],
+      matchStrings: ["(?m)^(?:export )?CNPG_VERSION=(?<currentValue>\\S+)$"],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "cloudnative-pg/cloudnative-pg",
+      extractVersionTemplate: "^v(?<version>.+)$",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^versions$/", "/^content/.+\\.mdx$/"],
+      matchStrings: ["(?m)^(?:export )?CURL_VERSION=(?<currentValue>\\S+)$"],
+      datasourceTemplate: "docker",
+      depNameTemplate: "curlimages/curl",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^versions$/"],
+      matchStrings: ["(?m)^KIND_VERSION=(?<currentValue>\\S+)$"],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "kubernetes-sigs/kind",
+      extractVersionTemplate: "^v(?<version>.+)$",
+    },
+    {
+      // The node image kind runs; each kind release lists the images it supports.
+      customType: "regex",
+      managerFilePatterns: ["/^versions$/"],
+      matchStrings: ["(?m)^KUBERNETES_VERSION=(?<currentValue>\\S+)$"],
+      datasourceTemplate: "docker",
+      depNameTemplate: "kindest/node",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^versions$/"],
+      matchStrings: ["(?m)^HELM_VERSION=(?<currentValue>\\S+)$"],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "helm/helm",
       extractVersionTemplate: "^v(?<version>.+)$",
     },
     {

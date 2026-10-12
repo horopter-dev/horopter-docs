@@ -253,7 +253,8 @@ Setup, the steps and `cleanup:` see every pin as a variable of the same name, so
 an image as `ghcr.io/horopter-dev/horoctl:$HOROPTER_VERSION` rather than writing the tag out,
 and a bump in `versions` changes the page and its test together.
 
-A reader's shell has no pins, so a tutorial whose steps read `$HOROPTER_VERSION` has the reader
-set it first, in a `manual` block of exactly `export HOROPTER_VERSION=<release>`. That is the
-one place a tag is written out: `pnpm test` fails on a page where it differs from the pin, and
-Renovate updates both.
+A reader's shell has no pins, so a page whose steps read a pin, such as `$HOROPTER_VERSION`,
+has the reader set it first, in a `manual` block of `export KEY=value` lines, one per pin, such
+as `export HOROPTER_VERSION=<release>`. That is the one place a pin's value is written out:
+`pnpm test` fails on a page where it differs from the `versions` file, and Renovate updates
+both.
