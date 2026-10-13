@@ -1,7 +1,7 @@
-// The site is served from `horopter-dev.github.io/horopter-docs` until it moves to
-// `horopter.dev`, which drops the base path. BASE_PATH= builds for the root, e.g. locally.
-export const basePath = process.env.BASE_PATH ?? "/horopter-docs";
-export const siteUrl = process.env.SITE_URL ?? "https://horopter-dev.github.io";
+// The site is served from the root of `docs.horopter.dev`. BASE_PATH builds it under a path
+// instead, e.g. BASE_PATH=/horopter-docs for the GitHub Pages project URL.
+export const basePath = process.env.BASE_PATH ?? "";
+export const siteUrl = process.env.SITE_URL ?? "https://docs.horopter.dev";
 
 export const appName = "Horopter";
 
