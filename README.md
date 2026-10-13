@@ -1,7 +1,7 @@
 # horopter-docs
 
 The documentation site for Horopter: Next.js and Fumadocs, exported as a static site and
-published to GitHub Pages at <https://horopter-dev.github.io/horopter-docs/>. The site is not
+published to GitHub Pages at <https://docs.horopter.dev/>. The site is not
 indexed yet.
 
 ## Working on it
@@ -11,7 +11,7 @@ Tools are pinned in `mise.toml`; `mise install` provides Node, pnpm and prek.
 ```sh
 pnpm install          # lifecycle scripts are off; nothing runs on install
 prek install
-BASE_PATH= pnpm dev   # http://localhost:3000, without the /horopter-docs base path
+pnpm dev             # http://localhost:3000
 ```
 
 Pages are MDX under `content/docs/`, in five sections — Tutorials, How-to, Reference,
@@ -32,9 +32,10 @@ prek run --all-files
 ```
 
 `pnpm build` fails unless every page carries a robots `noindex` meta tag, the export carries a
-`robots.txt` disallowing all crawling, and asset references resolve under the base path. The
-meta tag is what keeps the site out of search results: crawlers read `robots.txt` only at a
-host's root, and this one is served under `/horopter-docs/`.
+`robots.txt` disallowing all crawling, and asset references resolve under the base path. Served
+from the root of `docs.horopter.dev`, `robots.txt` stops crawling; the meta tag also keeps out of
+search results a page reached by a link, and covers a build under a base path, where crawlers
+never read `robots.txt`.
 
 `llms.txt` and `llms-full.txt` give the pages as markdown. `lib/llms.ts` resolves their links
 and Cards to site paths as the build writes them, as the HTML pages resolve them, so a page can
@@ -53,9 +54,9 @@ pnpm tutorial scripts/tutorial/fixtures/echo.mdx
 ```
 
 The site's Contributing section documents both halves: the
-[style guide](https://horopter-dev.github.io/horopter-docs/contributing/style-guide/) holds
+[style guide](https://docs.horopter.dev/contributing/style-guide/) holds
 the markers and their options, and
-[Testing a Tutorial](https://horopter-dev.github.io/horopter-docs/contributing/testing-a-tutorial/)
+[Testing a Tutorial](https://docs.horopter.dev/contributing/testing-a-tutorial/)
 holds running them, reading a failure report, bumping a pin, and why fork and Dependabot
 pull requests skip the tutorials.
 
