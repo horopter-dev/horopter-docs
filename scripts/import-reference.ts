@@ -4,9 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readVersions } from "#lib/versions.ts";
 
-const horopter = "https://github.com/horopter-dev/horopter.git";
+const horopterRepository = "https://github.com/horopter-dev/horopter.git";
 const referenceDir = "docs/reference";
 const contentReferenceDir = join("content", "docs", "reference");
+
+// No user or system config, credential helper or prompt: the checkout is anonymous, as a
+// reader's is.
+const anonymousGit = {
+  ...process.env,
+  GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_CONFIG_NOSYSTEM: "1",
+  GIT_TERMINAL_PROMPT: "0",
+  GIT_ASKPASS: "",
+  SSH_ASKPASS: "",
+};
 
 export type ReferenceSource = {
   repository: string;
@@ -14,42 +25,56 @@ export type ReferenceSource = {
   into: string;
 };
 
-function markdownPages(dir: string): string[] {
+function git(
+  { repository, tag }: ReferenceSource,
+  command: string,
+  args: string[],
+  cwd?: string,
+): void {
+  const result = spawnSync("git", ["-c", "credential.helper=", command, ...args], {
+    cwd,
+    encoding: "utf8",
+    env: anonymousGit,
+  });
+  if (result.status !== 0) {
+    const reason = (result.stderr || result.error?.message || "").trim();
+    throw new Error(`cannot check out ${tag} of ${repository}: git ${command}: ${reason}`);
+  }
+}
+
+function sparseCheckout(source: ReferenceSource, checkout: string): void {
+  git(source, "clone", [
+    "--quiet",
+    "--depth=1",
+    "--filter=blob:none",
+    "--no-checkout",
+    `--branch=${source.tag}`,
+    source.repository,
+    checkout,
+  ]);
+  git(source, "sparse-checkout", ["set", referenceDir], checkout);
+  git(source, "checkout", ["--quiet"], checkout);
+}
+
+function referencePages({ repository, tag }: ReferenceSource, dir: string): string[] {
   if (!existsSync(dir)) {
     return [];
   }
-  return readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-    .map((entry) => entry.name)
-    .toSorted();
+  const pages: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) {
+      throw new Error(
+        `${tag} of ${repository} holds ${entry.name} in ${referenceDir}/; ` +
+          "only *.md pages at its top level can be imported",
+      );
+    }
+    pages.push(entry.name);
+  }
+  return pages.toSorted();
 }
 
-// No credential helper and no prompt: the checkout is anonymous, as a reader's is.
-function sparseCheckout({ repository, tag }: ReferenceSource, checkout: string): void {
-  const result = spawnSync(
-    "git",
-    [
-      "-c",
-      "credential.helper=",
-      "clone",
-      "--quiet",
-      "--depth=1",
-      "--filter=blob:none",
-      "--no-checkout",
-      `--branch=${tag}`,
-      repository,
-      checkout,
-    ],
-    { encoding: "utf8", env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
-  );
-  const checkedOut =
-    result.status === 0 &&
-    spawnSync("git", ["-C", checkout, "sparse-checkout", "set", referenceDir]).status === 0 &&
-    spawnSync("git", ["-C", checkout, "checkout", "--quiet"]).status === 0;
-  if (!checkedOut) {
-    const reason = (result.stderr || result.error?.message || "").trim();
-    throw new Error(`cannot check out ${tag} of ${repository}: ${reason}`);
-  }
+function importedPages(dir: string): string[] {
+  return readdirSync(dir).filter((name) => name.endsWith(".md"));
 }
 
 /**
@@ -64,19 +89,19 @@ function sparseCheckout({ repository, tag }: ReferenceSource, checkout: string):
  *   The file names of the pages imported.
  *
  * Raises:
- *   Error: the tag cannot be checked out, or holds no pages in `docs/reference/`. The section
- *     is left as it was.
+ *   Error: the tag cannot be checked out, holds no pages in `docs/reference/`, or holds
+ *     something there other than top-level `*.md` pages. The section is left as it was.
  */
 export function importReference(source: ReferenceSource): string[] {
   const checkout = mkdtempSync(join(tmpdir(), "horopter-reference-"));
   try {
     sparseCheckout(source, checkout);
     const from = join(checkout, referenceDir);
-    const pages = markdownPages(from);
+    const pages = referencePages(source, from);
     if (pages.length === 0) {
       throw new Error(`${source.tag} of ${source.repository} has no pages in ${referenceDir}/`);
     }
-    for (const page of markdownPages(source.into)) {
+    for (const page of importedPages(source.into)) {
       rmSync(join(source.into, page));
     }
     for (const page of pages) {
@@ -90,6 +115,6 @@ export function importReference(source: ReferenceSource): string[] {
 
 if (import.meta.main) {
   const tag = readVersions().HOROPTER_VERSION;
-  const pages = importReference({ repository: horopter, tag, into: contentReferenceDir });
+  const pages = importReference({ repository: horopterRepository, tag, into: contentReferenceDir });
   console.log(`import-reference: ${pages.length} pages from horopter ${tag}`);
 }

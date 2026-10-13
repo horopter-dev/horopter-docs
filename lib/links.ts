@@ -1,4 +1,4 @@
-const explicit = /^(?:\.{1,2}\/|\/|#|\?|[a-z][a-z\d+.-]*:|$)/i;
+const notBare = /^(?:\.{1,2}\/|\/|#|\?|[a-z][a-z\d+.-]*:|$)/i;
 
 /**
  * Makes a bare file-relative href, such as `configuration.md#horo`, explicit as
@@ -12,5 +12,5 @@ const explicit = /^(?:\.{1,2}\/|\/|#|\?|[a-z][a-z\d+.-]*:|$)/i;
  *   The href with `./` prefixed when it is bare and relative; otherwise unchanged.
  */
 export function fileRelative(href: string): string {
-  return explicit.test(href) ? href : `./${href}`;
+  return notBare.test(href) ? href : `./${href}`;
 }

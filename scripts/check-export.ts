@@ -123,8 +123,8 @@ function checkTextFile(outDir: string, file: string, basePath: string): string[]
  * disallows all crawling, every page carries a robots noindex meta tag, every
  * root-relative reference in a page or an llms text file sits under the base
  * path and resolves to a file in the export, no page links relative to its own
- * URL, and an llms text file holds no relative link and no unrendered placeholder. Code in an llms text file is not
- * checked for links.
+ * URL, and an llms text file holds no relative link and no unrendered
+ * placeholder. Code in an llms text file is not checked for links.
  *
  * Args:
  *   outDir: The `next build` export directory.

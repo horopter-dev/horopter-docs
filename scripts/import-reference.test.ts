@@ -20,6 +20,15 @@ function scratchDir(): string {
   return dir;
 }
 
+const gitEnvironment: NodeJS.ProcessEnv = {
+  PATH: process.env["PATH"],
+  HOME: process.env["HOME"],
+  TMPDIR: process.env["TMPDIR"],
+  NODE_ENV: "test",
+  GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_CONFIG_NOSYSTEM: "1",
+};
+
 function git(cwd: string, ...args: string[]): void {
   execFileSync(
     "git",
@@ -31,7 +40,7 @@ function git(cwd: string, ...args: string[]): void {
       "-c",
       "commit.gpgsign=false",
     ].concat(args),
-    { cwd, stdio: "ignore", env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null" } },
+    { cwd, stdio: "ignore", env: gitEnvironment },
   );
 }
 
@@ -102,10 +111,25 @@ describe("importReference", () => {
 
   it("fails when the release has no docs/reference/ pages", () => {
     const repository = horopterRepository("v0.1.0", { "README.md": "# horopter\n" });
-    const into = contentDir({ "index.mdx": "index\n" });
+    const into = contentDir({ "index.mdx": "index\n", "metrics.md": "kept\n" });
 
     expect(() => importReference({ repository, tag: "v0.1.0", into })).toThrow(
       `v0.1.0 of ${repository} has no pages in docs/reference/`,
     );
+    expect(readFileSync(join(into, "metrics.md"), "utf8")).toBe("kept\n");
+  });
+
+  it.each([
+    ["a page in a subdirectory", "docs/reference/api/routes.md", "api"],
+    ["an MDX page", "docs/reference/routes.mdx", "routes.mdx"],
+  ])("fails rather than drop %s, which it cannot import", (_, path, entry) => {
+    const repository = horopterRepository("v1.2.3", { ...release, [path]: "page\n" });
+    const into = contentDir({ "index.mdx": "index\n", "metrics.md": "kept\n" });
+
+    expect(() => importReference({ repository, tag: "v1.2.3", into })).toThrow(
+      `v1.2.3 of ${repository} holds ${entry} in docs/reference/; ` +
+        "only *.md pages at its top level can be imported",
+    );
+    expect(readFileSync(join(into, "metrics.md"), "utf8")).toBe("kept\n");
   });
 });

@@ -1,8 +1,8 @@
 import { DocsBody, DocsDescription, DocsPage, DocsTitle } from "fumadocs-ui/layouts/docs/page";
 import { createRelativeLink } from "fumadocs-ui/mdx";
 import type { Metadata } from "next";
-import type { ComponentProps } from "react";
 import { notFound } from "next/navigation";
+import type { ComponentProps } from "react";
 import { Lockup } from "#components/lockup.tsx";
 import { getMDXComponents } from "#components/mdx.tsx";
 import { fileRelative } from "#lib/links.ts";
@@ -17,7 +17,7 @@ function isLanding(page: SourcePage): boolean {
 function pageLink(page: SourcePage) {
   const RelativeLink = createRelativeLink(source, page);
   return function PageLink({ href, ...props }: ComponentProps<"a">) {
-    return <RelativeLink href={href === undefined ? href : fileRelative(href)} {...props} />;
+    return <RelativeLink href={href && fileRelative(href)} {...props} />;
   };
 }
 
