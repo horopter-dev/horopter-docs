@@ -3,6 +3,7 @@
   "pages": [
     "install-kubernetes",
     "flux",
+    "github-action",
     "grafana",
     "issue-credentials",
     "observe-horopter",

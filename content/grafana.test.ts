@@ -1,9 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createProcessor } from "@mdx-js/mdx";
-import { frontmatter } from "fumadocs-core/content/md/frontmatter";
-import type { Code, Nodes } from "mdast";
 import { describe, expect, it } from "vitest";
+import { codeBlocks, hasMarker } from "#lib/code-blocks.ts";
 import { parse } from "yaml";
 import { readVersions } from "#lib/versions.ts";
 
@@ -12,25 +10,9 @@ import { readVersions } from "#lib/versions.ts";
 const page = join("content", "docs", "how-to", "grafana.mdx");
 const setupScript = join("journeys", "grafana", "setup.sh");
 
-function codeBlocks(): Code[] {
-  const body = createProcessor({ format: "mdx" }).parse(
-    frontmatter(readFileSync(page, "utf8")).content,
-  );
-  const found: Code[] = [];
-  const walk = (node: Nodes): void => {
-    if (node.type === "code") {
-      found.push(node);
-    } else if ("children" in node) {
-      node.children.forEach(walk);
-    }
-  };
-  walk(body);
-  return found;
-}
-
 function blockWith(marker: "run" | "manual", text: string): string {
-  const blocks = codeBlocks().filter(
-    (block) => (block.meta ?? "").split(/\s+/).includes(marker) && block.value.includes(text),
+  const blocks = codeBlocks(page).filter(
+    (block) => hasMarker(block, marker) && block.value.includes(text),
   );
   expect(blocks, `one ${marker} block containing ${text}`).toHaveLength(1);
   return blocks[0]?.value ?? "";
