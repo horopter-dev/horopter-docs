@@ -21,18 +21,6 @@ fi
 
 kind create cluster --name "$cluster" --image "kindest/node:$KUBERNETES_VERSION" --wait 120s
 
-# Horopter's images are private until Go public, and no step names a pull Secret, so the
-# chart's images and horoctl's are pulled here with the runner's login and loaded into the
-# node, where IfNotPresent finds them. Delete this at Go public (HOR-15).
-# kind load docker-image imports every platform of an image index, which Docker's containerd
-# store holds only one of, so this saves the node's platform alone.
-platform=$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')
-for image in horopter-ingress horopter-egress horopter-migrate horoctl; do
-  docker pull --quiet --platform "$platform" "ghcr.io/horopter-dev/$image:$app_version"
-  docker save --platform "$platform" "ghcr.io/horopter-dev/$image:$app_version" \
-    | kind load image-archive --name "$cluster" /dev/stdin
-done
-
 # The page's default names: namespace and release both horopter.
 export HOROPTER_INGRESS_URL=http://horopter-ingress.horopter.svc:8080
 export HOROPTER_EGRESS_URL=http://localhost:18081

@@ -51,96 +51,43 @@ jobs:
           cat report.txt
           grep -F "wrong-expect.mdx: run block at line 14:" report.txt
 
-  # The workflow token can read Horopter's private images once each image's package settings
-  # grant this repository Actions access. A fork or Dependabot pull request may still be
-  # refused, and skips; any other run that is refused fails, having tested nothing: a typo
-  # in the pin, say, or an image never granted.
   plan:
     name: Plan
     runs-on: ubuntu-26.04
     permissions:
       contents: read
-      packages: read
     outputs:
-      registry: ${{ steps.registry.outputs.available }}
       tutorials: ${{ steps.tutorials.outputs.pages }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Check this run can read Horopter's images
-        id: registry
+      # A pin naming no published image fails here, once, rather than in every Tutorial job.
+      - name: Check the pinned release's image exists
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          # A pull request from a fork or Dependabot, whose token may not reach the packages.
-          OUTSIDE_PR: >-
-            ${{ github.event.pull_request.head.repo.fork
-              || github.event.pull_request.user.login == 'dependabot[bot]' }}
         run: |
           set -euo pipefail
           version=$(sed -n 's/^HOROPTER_VERSION=//p' versions)
           image="ghcr.io/horopter-dev/horoctl:$version"
-          if docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin <<< "$GITHUB_TOKEN" \
-            && docker manifest inspect "$image" > /dev/null; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          elif [ "$OUTSIDE_PR" = true ]; then
-            skipped="This fork or Dependabot pull request cannot read $image, so the tutorials"
-            echo "::notice title=Tutorials skipped::$skipped cannot pull Horopter's private images."
-            echo "available=false" >> "$GITHUB_OUTPUT"
-          else
-            remedy="Check the tag exists and that the package grants horopter-docs Read under"
-            remedy="$remedy Manage Actions access."
-            echo "::error title=Cannot read Horopter's images::This run cannot read $image. $remedy"
+          if ! docker manifest inspect "$image" > /dev/null; then
+            echo "::error title=No image at the pin::$image is not published. Check versions."
             exit 1
           fi
-      # The pull-image fixture is always listed, so the matrix is never empty. A page that
-      # downloads horopter's release files, in its steps or its setup script, is left out while
-      # that repository is private.
       - name: List the tutorials
         id: tutorials
         shell: bash
         run: |
           set -euo pipefail
-          repository=https://github.com/horopter-dev/horopter
-          tutorials=$(mktemp)
-          skipped=$(mktemp)
-          git grep -lE '^```bash run' -- 'content/*.mdx' > "$tutorials" || [ "$?" -eq 1 ]
-          status=$(curl -sS -o /dev/null -w '%{http_code}' "$repository")
-          case "$status" in
-            200) ;;
-            404)
-              while IFS= read -r page; do
-                setup=$(sed -n 's|^setup: *[$]DOCS_ROOT/\([^ ]*\).*|\1|p' "$page")
-                if grep -qF "$repository/releases/download/" "$page" ${setup:+"$setup"}; then
-                  echo "$page" >> "$skipped"
-                  echo "::notice title=Tutorial skipped::$page downloads horopter's release files," \
-                    "which are private until the repository goes public."
-                fi
-              done < "$tutorials"
-              ;;
-            *)
-              echo "::error::$repository answered $status; expected 200 or 404."
-              exit 1
-              ;;
-          esac
-          pages=$(
-            {
-              grep -vxF -f "$skipped" "$tutorials" || [ "$?" -eq 1 ]
-              echo scripts/tutorial/fixtures/pull-image.mdx
-            } | sort | jq -Rnc '[inputs]'
-          )
+          pages=$(git grep -lE '^```bash run' -- 'content/*.mdx' | sort | jq -Rnc '[inputs]')
           echo "pages=$pages" >> "$GITHUB_OUTPUT"
           echo "$pages"
 
   tutorial:
     name: Tutorial
     needs: plan
-    if: needs.plan.outputs.registry == 'true'
     runs-on: ubuntu-26.04
     permissions:
       contents: read
-      packages: read
     strategy:
       fail-fast: false
       matrix:
@@ -153,13 +100,6 @@ jobs:
         with:
           install_args: node pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Log in to GHCR
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin <<< "$GITHUB_TOKEN"
       - name: Run ${{ matrix.page }}
         shell: bash
         env:

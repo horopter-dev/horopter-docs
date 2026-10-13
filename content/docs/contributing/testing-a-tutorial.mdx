@@ -12,9 +12,6 @@ CI runs every tutorial against the pinned Horopter release, using the harness in
 - [mise](https://mise.jdx.dev/), activated in your shell, which installs and selects the Node
   and pnpm versions pinned in `mise.toml`.
 - Docker, for a tutorial that runs containers.
-- While Horopter's images are private, a login to `ghcr.io` with a GitHub personal access
-  token (classic) that has the `read:packages` scope, for a tutorial that pulls them.
-  `docker login ghcr.io --username <your GitHub username>` asks for the token as its password.
 
 ## Steps
 
@@ -57,9 +54,6 @@ lists them, and does nothing when there are none:
 git grep -lE '^```bash run' -- 'content/*.mdx' | xargs -r pnpm --silent tutorial
 ```
 
-CI also runs `scripts/tutorial/fixtures/pull-image.mdx`, which pulls a private image at the
-pinned release and so needs the `ghcr.io` login above.
-
 ### Bump a Pin
 
 Renovate opens the pull request when a pin in `versions` has a new version. Each pin has a
@@ -79,11 +73,10 @@ empty, and no key twice. `HOROPTER_VERSION` is required and must be a release ta
 three numbers with an optional pre-release suffix. Otherwise the build and the harness both stop
 with an error naming the file and the line.
 
-On the pull request, the Tutorials workflow's Plan job first checks that it can read
-`ghcr.io/horopter-dev/horoctl` at the new tag, and fails if the tag does not exist or the
-package does not grant `horopter-docs` access. Each tutorial then runs against the new release
-in its own job. A push to `main` that changes `versions` runs the workflow again, and the docs
-site, rebuilt on the same push, shows the new pins.
+On the pull request, the Tutorials workflow's Plan job first checks that
+`ghcr.io/horopter-dev/horoctl` exists at the new tag, and fails if it does not. Each tutorial
+then runs against the new release in its own job. A push to `main` that changes `versions` runs
+the workflow again, and the docs site, rebuilt on the same push, shows the new pins.
 
 ## Reading a Failure Report
 
@@ -112,19 +105,6 @@ block printed. The report names only the first failing block. The reason is one 
   stopped the session. Its output is what it printed before stopping, and for a `retry` block
   that of its last attempt that printed anything.
 
-Here the `pull-image.mdx` fixture ran without a `ghcr.io` login:
-
-```text
-scripts/tutorial/fixtures/pull-image.mdx: run block at line 10: exited with status 1
-  command:
-    docker pull --quiet "ghcr.io/horopter-dev/horoctl:$HOROPTER_VERSION"
-  expected (expect block at line 14):
-    ghcr.io/horopter-dev/horoctl:v...
-  output:
-    Error response from daemon: error from registry: unauthorized
-    unauthorized
-```
-
 A page with `setup:` reports it first: `page: setup passed`, or, when it failed,
 `page: setup exited with status N; no run block ran` or
 `page: setup exceeded its timeout of Ns; no run block ran`, each followed by the setup command
@@ -143,39 +123,9 @@ on a push to `main` that changes `versions`, and when started by hand. Its three
 - **Harness fixtures** runs `echo.mdx`, which must pass and list its `manual` block as
   untested; `setup.mdx`, which must pass, its steps reading what its setup script exported;
   and `wrong-expect.mdx`, which must fail naming its second `run` block.
-- **Plan** lists the pages under `content/` with a line starting `` ```bash run ``, plus
-  `pull-image.mdx`, and checks that the run can read Horopter's images. While
-  `horopter-dev/horopter` is private, it leaves out every page that downloads that
-  repository's release files, with a "Tutorial skipped" notice naming it.
-- **Tutorial** runs each listed page in its own job, after logging in to `ghcr.io` with the
-  workflow's `GITHUB_TOKEN`.
+- **Plan** checks that `horoctl`'s image exists at the pinned `HOROPTER_VERSION`, so a wrong
+  pin fails once, and lists the pages under `content/` with a line starting `` ```bash run ``.
+- **Tutorial** runs each listed page in its own job.
 
 The weekly run catches drift from outside this repository, such as an image the tutorials pull
 changing under the same tag.
-
-## Why Fork and Dependabot Pull Requests Skip the Tutorials
-
-While Horopter's images are private, the workflow's `GITHUB_TOKEN` reads one only if that
-image's package settings grant `horopter-docs` Read under "Manage Actions access". Neither
-GitHub's REST API nor its Terraform provider manages that list, so the grant is made by hand,
-once for each image a tutorial pulls. A pull
-request from a fork or from Dependabot runs with a token that may not reach the packages at
-all. When such a run cannot read the image, Plan leaves a "Tutorials skipped" notice and the
-Tutorial jobs are skipped; the Harness fixtures job still runs. Any other run that cannot read
-the image fails Plan, so a run cannot pass having tested nothing.
-
-Skipping those pull requests costs little. A dependency bump changes the site's toolchain, not
-the shell steps a tutorial runs, and the weekly run on `main` still runs every tutorial.
-
-## Why a Page That Downloads Release Files Is Skipped
-
-A reader downloads Horopter's release files, such as its `docker-compose.yaml`, from
-`https://github.com/horopter-dev/horopter/releases/download/`, without logging in. While
-`horopter-dev/horopter` is private those URLs answer 404, and the workflow's `GITHUB_TOKEN`
-cannot read another repository's releases. Plan asks `github.com/horopter-dev/horopter` without
-credentials: when it answers 404, every tutorial page that names that URL, in its steps or in
-the script its `setup:` names, is left out; when it answers 200, every page runs, and a
-missing release file fails its page. Any other answer fails Plan.
-
-Until then, follow such a page by hand, downloading each release file with
-`gh release download "$HOROPTER_VERSION" --repo horopter-dev/horopter --pattern <file>`.
