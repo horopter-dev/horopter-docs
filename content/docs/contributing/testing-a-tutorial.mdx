@@ -173,9 +173,9 @@ A reader downloads Horopter's release files, such as its `docker-compose.yaml`, 
 `https://github.com/horopter-dev/horopter/releases/download/`, without logging in. While
 `horopter-dev/horopter` is private those URLs answer 404, and the workflow's `GITHUB_TOKEN`
 cannot read another repository's releases. Plan asks `github.com/horopter-dev/horopter` without
-credentials: when it answers 404, every tutorial page that names that URL is left out;
-when it answers 200, every page runs, and a missing release file fails its page. Any other
-answer fails Plan.
+credentials: when it answers 404, every tutorial page that names that URL, in its steps or in
+the script its `setup:` names, is left out; when it answers 200, every page runs, and a
+missing release file fails its page. Any other answer fails Plan.
 
 Until then, follow such a page by hand, downloading each release file with
 `gh release download "$HOROPTER_VERSION" --repo horopter-dev/horopter --pattern <file>`.

@@ -1,0 +1,388 @@
+---
+title: Show Changes on Your Grafana Dashboards
+description: Draw Horopter's changes as regions on the Grafana dashboards you already have, filtered by subject.
+setup: $DOCS_ROOT/journeys/grafana/setup.sh
+setup-timeout: 600
+cleanup: $DOCS_ROOT/journeys/grafana/cleanup.sh
+---
+
+Grafana reads changes from Horopter's egress through the Infinity data source plugin, and draws
+each one as a region on a dashboard's graphs: an annotation. The provisioning-file steps below
+are tested against Horopter <HoropterVersion/>, Grafana <Version name="GRAFANA_VERSION"/> and
+Infinity <Version name="INFINITY_VERSION"/>; the kube-prometheus-stack steps are not.
+
+## Goal
+
+The changes Horopter holds drawn on one of your dashboards, limited to the subjects that
+dashboard is about.
+
+## Prerequisites
+
+- A Grafana you run and can configure: through its environment and provisioning files, or as
+  part of [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack).
+  It must support `GF_PLUGINS_PREINSTALL_SYNC`.
+- Infinity 4.1 or later, which the steps install.
+- A reader key, from the guide you followed to record changes, or from
+  [Issue Credentials](./issue-credentials.mdx).
+- Horopter's egress, reachable from Grafana's server, such as one from
+  [Install Horopter in Kubernetes](./install-kubernetes.mdx).
+- `curl` and `jq`.
+
+## Steps
+
+### Choose Egress's URL
+
+Grafana calls egress from its own server, not from your browser: egress sends no CORS headers,
+so the data source uses server access, which Grafana calls proxy. The URL is therefore the one
+Grafana's server reaches egress by, which may differ from the `HOROPTER_EGRESS_URL` you use on
+your machine: inside a cluster, it is egress's Service.
+
+Set it, with your Grafana's URL, a Grafana server admin's login, and, for the provisioning
+file, Grafana's provisioning directory, in the shell you will use for the rest of the page:
+
+```bash manual
+export GRAFANA_EGRESS_URL=http://horopter-egress.horopter.svc:8081
+export GRAFANA_URL=https://grafana.example.com
+export GRAFANA_AUTH=admin:<password>
+export GRAFANA_PROVISIONING=/etc/grafana/provisioning
+```
+
+### Install Infinity and Add the Data Source
+
+The data source is named `Horopter`, with uid `horopter`, and sends the reader key in an
+`Authorization` header. Grafana reads the key from its environment, so it stays out of the
+file. `allowedHosts` names egress's URL, so the data source sends the key nowhere else.
+
+<Tabs items={["Provisioning file", "kube-prometheus-stack"]}>
+  <Tab value="Provisioning file">
+
+Add these to Grafana's environment, with your reader key, and restart Grafana, which installs
+Infinity as it starts:
+
+```bash manual
+GF_PLUGINS_PREINSTALL_SYNC=yesoreyeram-infinity-datasource@4.1.1
+HOROPTER_READER_KEY=<your reader key>
+```
+
+Write the data source's provisioning file. The backslash keeps your shell from expanding
+`${HOROPTER_READER_KEY}`; Grafana expands it from its own environment when it reads the file:
+
+```bash run
+mkdir -p "$GRAFANA_PROVISIONING/datasources"
+cat > "$GRAFANA_PROVISIONING/datasources/horopter.yaml" << EOF
+apiVersion: 1
+datasources:
+  - name: Horopter
+    uid: horopter
+    type: yesoreyeram-infinity-datasource
+    access: proxy
+    url: $GRAFANA_EGRESS_URL
+    jsonData:
+      allowedHosts:
+        - $GRAFANA_EGRESS_URL
+      httpHeaderName1: Authorization
+    secureJsonData:
+      httpHeaderValue1: Bearer \${HOROPTER_READER_KEY}
+EOF
+```
+
+  </Tab>
+  <Tab value="kube-prometheus-stack">
+
+Put the reader key in a Secret in Grafana's namespace:
+
+```bash manual
+kubectl create secret generic horopter-reader-key --namespace monitoring \
+  --from-literal key='<your reader key>'
+```
+
+Add these values to your kube-prometheus-stack release. The chart's Grafana installs Infinity,
+reads the key into its environment, and its sidecar provisions the data source:
+
+```yaml manual
+grafana:
+  plugins:
+    - yesoreyeram-infinity-datasource@4.1.1
+  envValueFrom:
+    HOROPTER_READER_KEY:
+      secretKeyRef:
+        name: horopter-reader-key
+        key: key
+  additionalDataSources:
+    - name: Horopter
+      uid: horopter
+      type: yesoreyeram-infinity-datasource
+      access: proxy
+      url: http://horopter-egress.horopter.svc:8081
+      jsonData:
+        allowedHosts:
+          - http://horopter-egress.horopter.svc:8081
+        httpHeaderName1: Authorization
+      secureJsonData:
+        httpHeaderValue1: Bearer ${HOROPTER_READER_KEY}
+```
+
+The URL is egress's Service, `http://<release>-egress.<namespace>.svc:8081`, here for release
+and namespace `horopter`.
+
+  </Tab>
+</Tabs>
+
+### Add the Annotation to a Dashboard
+
+Grafana has no annotation query that applies to every dashboard, so each dashboard that shows
+changes carries its own. The annotation queries `/adapters/grafana/annotations` on the
+`Horopter` data source for the dashboard's time range, `from=${__from}` and `to=${__to}`, and
+the subjects its `namespace` variable selects. Egress fills an annotation's `text` only from a
+change's `horopter.description` attribute, so the query maps the change's title to `text`,
+which is what Grafana shows when you hover over a region.
+
+The dashboard below holds the annotation and the variable, and nothing else. Copy both into
+your own dashboard's JSON, under `annotations.list` and `templating.list`, or provision it and
+add your panels to it. Its `namespace` variable offers two fixed values; a query variable, such
+as one listing your cluster's namespaces from Prometheus, works the same way.
+
+<Tabs items={["Provisioning file", "kube-prometheus-stack"]}>
+  <Tab value="Provisioning file">
+
+Write a dashboard provider, which tells Grafana where to find dashboard files, and the
+dashboard. The provider's `path` is where Grafana's server finds the dashboard: change it if
+your provisioning directory is not `/etc/grafana/provisioning`.
+
+```bash run
+mkdir -p "$GRAFANA_PROVISIONING/dashboards/horopter"
+cat > "$GRAFANA_PROVISIONING/dashboards/horopter.yaml" << 'EOF'
+apiVersion: 1
+providers:
+  - name: horopter
+    type: file
+    options:
+      path: /etc/grafana/provisioning/dashboards/horopter
+EOF
+cat > "$GRAFANA_PROVISIONING/dashboards/horopter/horopter-changes.json" << 'EOF'
+{
+  "uid": "horopter-changes",
+  "title": "Horopter changes",
+  "schemaVersion": 41,
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "label": "Namespace",
+        "type": "custom",
+        "query": "demo,other",
+        "multi": true,
+        "includeAll": true,
+        "allValue": "*",
+        "current": { "text": ["demo"], "value": ["demo"] }
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Horopter changes",
+        "enable": true,
+        "iconColor": "rgba(255, 152, 48, 0.4)",
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "horopter" },
+        "target": {
+          "refId": "Changes",
+          "type": "json",
+          "source": "url",
+          "parser": "jq-backend",
+          "format": "dataframe",
+          "url": "/adapters/grafana/annotations",
+          "url_options": {
+            "method": "GET",
+            "params": [
+              { "key": "from", "value": "${__from}" },
+              { "key": "to", "value": "${__to}" },
+              { "key": "subject", "value": "*/${namespace:glob}/*" }
+            ]
+          },
+          "root_selector": ".[] | {time, timeEnd, text: .title, tags: ((.tags // []) | join(\",\"))}",
+          "columns": [
+            { "selector": "time", "text": "time", "type": "timestamp_epoch" },
+            { "selector": "timeEnd", "text": "timeEnd", "type": "timestamp_epoch" },
+            { "selector": "text", "text": "text", "type": "string" },
+            { "selector": "tags", "text": "tags", "type": "string" }
+          ]
+        }
+      }
+    ]
+  },
+  "panels": []
+}
+EOF
+```
+
+Restart Grafana to load the new files, or, as a Grafana server admin, have it reload them:
+
+```bash run
+curl -fsS -X POST -u "$GRAFANA_AUTH" "$GRAFANA_URL/api/admin/provisioning/datasources/reload"
+echo
+curl -fsS -X POST -u "$GRAFANA_AUTH" "$GRAFANA_URL/api/admin/provisioning/dashboards/reload"
+```
+
+```text expect
+{"message":"Datasources config reloaded"}
+{"message":"Dashboards config reloaded"}
+```
+
+  </Tab>
+  <Tab value="kube-prometheus-stack">
+
+Create the dashboard as a ConfigMap labelled `grafana_dashboard: "1"`, in a namespace Grafana's
+dashboard sidecar searches. The sidecar loads it without a restart:
+
+```yaml manual
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: horopter-changes-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  horopter-changes.json: |
+    {
+      "uid": "horopter-changes",
+      "title": "Horopter changes",
+      "schemaVersion": 41,
+      "time": { "from": "now-6h", "to": "now" },
+      "templating": {
+        "list": [
+          {
+            "name": "namespace",
+            "label": "Namespace",
+            "type": "custom",
+            "query": "demo,other",
+            "multi": true,
+            "includeAll": true,
+            "allValue": "*",
+            "current": { "text": ["demo"], "value": ["demo"] }
+          }
+        ]
+      },
+      "annotations": {
+        "list": [
+          {
+            "name": "Horopter changes",
+            "enable": true,
+            "iconColor": "rgba(255, 152, 48, 0.4)",
+            "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "horopter" },
+            "target": {
+              "refId": "Changes",
+              "type": "json",
+              "source": "url",
+              "parser": "jq-backend",
+              "format": "dataframe",
+              "url": "/adapters/grafana/annotations",
+              "url_options": {
+                "method": "GET",
+                "params": [
+                  { "key": "from", "value": "${__from}" },
+                  { "key": "to", "value": "${__to}" },
+                  { "key": "subject", "value": "*/${namespace:glob}/*" }
+                ]
+              },
+              "root_selector": ".[] | {time, timeEnd, text: .title, tags: ((.tags // []) | join(\",\"))}",
+              "columns": [
+                { "selector": "time", "text": "time", "type": "timestamp_epoch" },
+                { "selector": "timeEnd", "text": "timeEnd", "type": "timestamp_epoch" },
+                { "selector": "text", "text": "text", "type": "string" },
+                { "selector": "tags", "text": "tags", "type": "string" }
+              ]
+            }
+          }
+        ]
+      },
+      "panels": []
+    }
+```
+
+  </Tab>
+</Tabs>
+
+### Filter by Subject
+
+`subject` is a pattern over a change's subject. `*` matches any run of characters but `/`, `?`
+one character but `/`, `[...]` one character of a class, and `\` escapes the next character;
+`{a,b}` matches either alternative, without nesting. A change matches when its whole subject
+does. Repeat `subject` as a further parameter to match any of several patterns.
+
+Grafana's `${namespace:glob}` writes a multi-value variable as `{a,b}`, so
+`*/${namespace:glob}/*` matches any object in any of the namespaces selected. Egress refuses a
+pattern of more than 64 alternatives, which a variable with many values reaches when you
+select "All"; the variable's custom all value, `allValue` in its JSON, is set to `*` so that
+"All" sends one pattern instead.
+
+Subjects as the Flux client and the GitHub Action record them:
+
+| pattern | matches |
+| --- | --- |
+| `HelmRelease/*/*` | every HelmRelease the Flux client records |
+| `{HelmRelease,Kustomization}/prod/*` | every HelmRelease and Kustomization in namespace `prod` |
+| `*/${namespace:glob}/*` | every Flux object in the namespaces the variable selects |
+| `GitRepository/flux-system/*` | each new revision of a GitRepository in `flux-system` |
+| `acme/prod` | the GitHub Action's runs given subject `acme/prod` |
+| `acme/*` | every subject you gave the Action that starts `acme/` |
+
+### Filter by More Than Subject
+
+Add any of these as a further parameter of the annotation. They are ANDed with `subject` and
+with each other.
+
+| parameter | keeps changes |
+| --- | --- |
+| `type` | of this type, such as `deployment.completed` |
+| `status` | in this status, such as `completed` or `failed` |
+| `locus` | recorded under this locus, the part of a change's ref before the `/` |
+| `source` | posted by this source |
+| `attr.deployment.environment.name` | whose `deployment.environment.name` attribute has this value |
+
+[What Is Horopter](../concepts/what-is-horopter.mdx) defines each of these terms.
+
+## Verification
+
+Open the dashboard. Each change in its time range, whose subject the `namespace` variable
+selects, is drawn as a shaded region over its graphs.
+
+The same check from the shell: run the dashboard's own annotation query over the last hour
+through Grafana, as Grafana does when it draws the dashboard, with the variable set as you
+would select it, and print each change's title. Set `dashboard` to the uid of the dashboard
+you added the annotation to, and `namespace` to one of its variable's values:
+
+```bash run
+dashboard=horopter-changes
+namespace=demo
+now=$(date +%s000)
+curl -fsS -u "$GRAFANA_AUTH" "$GRAFANA_URL/api/dashboards/uid/$dashboard" \
+  | jq --arg from "$((now - 3600000))" --arg to "$now" --arg namespace "$namespace" '
+    .dashboard.annotations.list[] | select(.datasource.uid == "horopter")
+    | {from: $from, to: $to, queries: [.target + {datasource}
+        | walk(if type == "string" then sub("\\$\\{namespace:glob\\}"; $namespace) else . end)]}' \
+  | curl -fsS -u "$GRAFANA_AUTH" -H 'Content-Type: application/json' --data @- \
+    "$GRAFANA_URL/api/ds/query" \
+  | jq -r '.results[].frames[] | (.schema.fields | map(.name) | index("text")) as $i
+    | .data.values[$i][]'
+```
+
+```text expect
+Upgrade demo app
+```
+
+It prints the title of every change in the namespace you set, and none from any other.
+
+## If No Annotations Appear
+
+- **401 after you rotate the reader key.** Grafana reads its environment only when it starts;
+  restart it.
+- **400 when "All" is selected.** The variable has more than 64 values and no custom all
+  value; set its custom all value to `*`.
+- **Nothing in your browser's network tab, or a CORS error.** The data source uses browser
+  access; set it to server, `access: proxy`.
+- **Fewer regions than expected over a long time range.** Egress answered with only the oldest
+  changes that fit its memory budget, and set `X-Horopter-Truncated: true`. Narrow the time
+  range or the filter; [Read Admission](../concepts/read-admission.mdx) explains why.

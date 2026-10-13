@@ -258,3 +258,8 @@ has the reader set it first, in a `manual` block of `export KEY=value` lines, on
 as `export HOROPTER_VERSION=<release>`. That is the one place a pin's value is written out:
 `pnpm test` fails on a page where it differs from the `versions` file, and Renovate updates
 both.
+
+A value a shell variable cannot reach, such as a plugin's `id@version` in an environment file
+or Helm values, is written out too, in a `manual` block. Give it a test that holds it equal to
+the pin, and a match string in that pin's Renovate manager, as the Grafana how-to does for
+`INFINITY_VERSION`.

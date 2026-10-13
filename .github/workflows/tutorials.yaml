@@ -95,7 +95,8 @@ jobs:
             exit 1
           fi
       # The pull-image fixture is always listed, so the matrix is never empty. A page that
-      # downloads horopter's release files is left out while that repository is private.
+      # downloads horopter's release files, in its steps or its setup script, is left out while
+      # that repository is private.
       - name: List the tutorials
         id: tutorials
         shell: bash
@@ -110,7 +111,8 @@ jobs:
             200) ;;
             404)
               while IFS= read -r page; do
-                if grep -qF "$repository/releases/download/" "$page"; then
+                setup=$(sed -n 's|^setup: *[$]DOCS_ROOT/\([^ ]*\).*|\1|p' "$page")
+                if grep -qF "$repository/releases/download/" "$page" ${setup:+"$setup"}; then
                   echo "$page" >> "$skipped"
                   echo "::notice title=Tutorial skipped::$page downloads horopter's release files," \
                     "which are private until the repository goes public."

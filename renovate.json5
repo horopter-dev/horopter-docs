@@ -67,10 +67,14 @@
       depNameTemplate: "grafana/grafana",
     },
     {
-      // Tagged v4.1.1; Grafana installs the plugin as 4.1.1.
+      // Tagged v4.1.1; Grafana installs the plugin as 4.1.1. The Grafana how-to has a reader
+      // install it by id@version, which a content test keeps equal to this pin.
       customType: "regex",
-      managerFilePatterns: ["/^versions$/"],
-      matchStrings: ["(?m)^INFINITY_VERSION=(?<currentValue>\\S+)$"],
+      managerFilePatterns: ["/^versions$/", "/^content/.+\\.mdx$/"],
+      matchStrings: [
+        "(?m)^INFINITY_VERSION=(?<currentValue>\\S+)$",
+        "yesoreyeram-infinity-datasource@(?<currentValue>\\d\\S*)",
+      ],
       datasourceTemplate: "github-releases",
       depNameTemplate: "grafana/grafana-infinity-datasource",
       extractVersionTemplate: "^v(?<version>.+)$",

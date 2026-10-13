@@ -2,6 +2,7 @@
   "title": "How-to Guides",
   "pages": [
     "install-kubernetes",
+    "grafana",
     "issue-credentials",
     "observe-horopter",
     "re-fold-one-change",
