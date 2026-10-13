@@ -1,0 +1,207 @@
+---
+title: Record Flux Commits and Releases
+description: Install the Flux client beside Flux, and see every commit it applies and every HelmRelease rollout as a change.
+setup: $DOCS_ROOT/journeys/flux/setup.sh
+setup-timeout: 900
+cleanup: $DOCS_ROOT/journeys/flux/cleanup.sh
+---
+
+The Flux client, `horopter-flux`, runs beside Flux and watches its objects read-only. It
+records each commit a GitRepository fetches, ended by the first outcome of each Kustomization
+that applies it, and each HelmRelease install or upgrade, ended by its outcome. Nothing is
+configured per release. Each step below is tested against Horopter <HoropterVersion/>, chart
+`horopter-flux` <Version name="HOROPTER_FLUX_CHART_VERSION"/>, and Flux
+<Version name="FLUX_VERSION"/>.
+
+<Callout type="warn">
+  Horopter's images and charts are private until the project goes public, so until then these
+  steps work only for a cluster that can pull from `ghcr.io/horopter-dev`.
+</Callout>
+
+## Goal
+
+The commit your cluster runs now, and the client's own install, read back as changes with
+`horo`; then every commit Flux applies after it.
+
+## Prerequisites
+
+- A cluster running Flux 2, with a GitRepository applied by a Kustomization.
+- Horopter running and reachable from the cluster, and a tenant, from
+  [Install Horopter in Kubernetes](./install-kubernetes.mdx).
+- `kubectl` with access to the `flux-system` namespace and Horopter's, and `jq`.
+- The `in_cluster` and `horoctl` functions from
+  [Create a Tenant](./install-kubernetes.mdx#create-a-tenant), defined in your shell.
+- `horo`, from [Try Horopter](../tutorials/try-horopter.mdx#install-horo), with egress
+  reachable from your machine.
+
+## Steps
+
+### Set Your Values
+
+Set the chart release, a name for this cluster, and the values you kept from Install Horopter
+in Kubernetes, in the shell you will use for the rest of the page:
+
+```bash manual
+export HOROPTER_FLUX_CHART_VERSION=0.3.0
+export CLUSTER=prod-eu
+export HOROPTER_NAMESPACE=horopter
+export HOROPTER_RELEASE=horopter
+export HOROPTER_DATABASE_SECRET=horopter-db-app
+export TENANT_ID=<your tenant id>
+export HOROPTER_INGRESS_URL=http://horopter-ingress.horopter.svc:8080
+export HOROPTER_EGRESS_URL=http://localhost:8081
+```
+
+`HOROPTER_INGRESS_URL` is ingress as the cluster reaches it, and `HOROPTER_EGRESS_URL` egress
+as your machine reaches it.
+
+### Issue the Keys
+
+The client posts with a producer key, and `horo` reads with a reader key from
+`HOROPTER_EGRESS_KEY`. Each key is printed once, on a line of its own starting `horo_`:
+
+```bash run timeout=240
+PRODUCER_KEY=$(horoctl admin keys issue --tenant "$TENANT_ID" --role producer \
+  --source "flux-$CLUSTER" | grep -x 'horo_[0-9a-f_]*')
+HOROPTER_EGRESS_KEY=$(horoctl admin keys issue --tenant "$TENANT_ID" --role reader \
+  --source horo | grep -x 'horo_[0-9a-f_]*')
+export HOROPTER_EGRESS_KEY
+```
+
+Issue one producer key for each cluster. Its source, `flux-$CLUSTER`, is also its locus, so each
+cluster records its own changes: two clusters applying one commit record two.
+
+### Store the Producer Key
+
+```bash run
+kubectl create secret generic horopter-flux --namespace flux-system \
+  --from-literal=key="$PRODUCER_KEY"
+```
+
+```text expect
+secret/horopter-flux created
+```
+
+To rotate the key, update this Secret and restart the client's pod.
+
+### Install the Client
+
+Write a HelmRepository for Horopter's charts, and a HelmRelease that installs `horopter-flux`
+against ingress and the Secret:
+
+```bash run
+cat > horopter-flux.yaml << EOF
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: horopter
+  namespace: flux-system
+spec:
+  type: oci
+  url: oci://ghcr.io/horopter-dev/charts
+  interval: 1h
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: horopter-flux
+  namespace: flux-system
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: horopter-flux
+      version: "$HOROPTER_FLUX_CHART_VERSION"
+      sourceRef:
+        kind: HelmRepository
+        name: horopter
+  values:
+    ingress:
+      url: $HOROPTER_INGRESS_URL
+      existingSecret: horopter-flux
+EOF
+```
+
+Commit `horopter-flux.yaml` to your fleet repository, where a Kustomization applies it. Here it
+is applied directly, so the YAML above is the YAML under test:
+
+```bash run
+kubectl apply -f horopter-flux.yaml
+```
+
+```text expect
+helmrepository.source.toolkit.fluxcd.io/horopter created
+helmrelease.helm.toolkit.fluxcd.io/horopter-flux created
+```
+
+<Callout type="warn">
+  Do not health-check a HelmRelease from a Kustomization, with `wait: true` or by listing it
+  under `healthChecks`. While the release is stuck, every later commit that Kustomization
+  applies would fail with it. The release's own change records its outcome.
+</Callout>
+
+Wait for the release to be ready:
+
+```bash run timeout=300 retry=5
+jq -e '.status.conditions[] | select(.type == "Ready") | .status == "True"' \
+  < <(kubectl get helmrelease horopter-flux --namespace flux-system -o json)
+```
+
+```text expect
+true
+```
+
+### Read It Back
+
+On start, the client records the current state of every source at the times Flux applied it.
+So the commit your cluster runs now appears at once, at the time Flux fetched it, and the first
+rollout the client sees is its own install. Wait until that install's change has ended:
+
+```bash run timeout=120 retry=5
+horo changes --locus "flux-$CLUSTER" --subject HelmRelease/flux-system/horopter-flux \
+  | jq -e --slurp 'any(.status == "completed")'
+```
+
+```text expect
+true
+```
+
+Then list this cluster's changes of the last 30 days:
+
+```bash run
+horo changes --locus "flux-$CLUSTER" --since 720h | jq -r '"\(.status)  \(.subject)  \(.title)"'
+```
+
+```text expect
+completed  GitRepository/flux-system/podinfo  Merge pull request #522 from stefanprodan/release-...
+completed  HelmRelease/flux-system/horopter-flux  v0.13.0
+```
+
+Each line is a change's status, subject and title. A commit's title is its subject as Flux
+quoted it, which Flux shortens to 50 characters and `...`. `--format table` shows the same
+changes with their start, duration and ref.
+
+### Make a Change
+
+Push a commit to the repository a GitRepository fetches, and list the changes again once Flux
+has applied it:
+
+```bash manual
+horo changes --locus "flux-$CLUSTER" --since 1h --format table
+```
+
+The new commit is a change titled by its subject, started when Flux fetched it and ended when
+each Kustomization that applies it finished.
+
+## Verification
+
+`horo changes` lists one change for the commit each GitRepository holds, titled by its subject,
+and one for the client's own HelmRelease, titled by the Horopter release it installed.
+
+## What It Does Not Record
+
+Commits from Git sources only: an OCIRepository or HelmRepository artifact starts no change.
+
+## What's Next?
+
+- [Show Changes on Your Grafana Dashboards](./grafana.mdx), with the reader key above.

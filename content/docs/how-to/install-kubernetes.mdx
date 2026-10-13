@@ -319,9 +319,10 @@ in_cluster "$(jq -n --arg image "curlimages/curl:$CURL_VERSION" \
 
 ## What's Next?
 
-Keep five values for the producers you set up next: `HOROPTER_NAMESPACE`,
+Keep six values for the producers you set up next: `HOROPTER_NAMESPACE`, `HOROPTER_RELEASE`,
 `HOROPTER_DATABASE_SECRET`, `TENANT_ID`, `HOROPTER_INGRESS_URL` and `HOROPTER_EGRESS_URL`.
 
+- [Record Flux Commits and Releases](./flux.mdx), if the cluster runs Flux.
 - [Issue Credentials](./issue-credentials.mdx) for each producer and reader.
 - [Observe Horopter](./observe-horopter.mdx): its logs, metrics and traces, and what to alert
   on.

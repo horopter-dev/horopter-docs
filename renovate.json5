@@ -94,6 +94,14 @@
     {
       customType: "regex",
       managerFilePatterns: ["/^versions$/", "/^content/.+\\.mdx$/"],
+      matchStrings: ["(?m)^(?:export )?HOROPTER_FLUX_CHART_VERSION=(?<currentValue>\\S+)$"],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "horopter-dev/helm-charts",
+      extractVersionTemplate: "^horopter-flux-(?<version>\\d.*)$",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^versions$/", "/^content/.+\\.mdx$/"],
       matchStrings: ["(?m)^(?:export )?CNPG_VERSION=(?<currentValue>\\S+)$"],
       datasourceTemplate: "github-releases",
       depNameTemplate: "cloudnative-pg/cloudnative-pg",
@@ -129,6 +137,22 @@
       datasourceTemplate: "github-releases",
       depNameTemplate: "helm/helm",
       extractVersionTemplate: "^v(?<version>.+)$",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^versions$/"],
+      matchStrings: ["(?m)^FLUX_VERSION=(?<currentValue>\\S+)$"],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "fluxcd/flux2",
+      extractVersionTemplate: "^v(?<version>.+)$",
+    },
+    {
+      // The Flux how-to's source: Flux's own example application, at a release tag.
+      customType: "regex",
+      managerFilePatterns: ["/^versions$/"],
+      matchStrings: ["(?m)^PODINFO_TAG=(?<currentValue>\\S+)$"],
+      datasourceTemplate: "github-tags",
+      depNameTemplate: "stefanprodan/podinfo",
     },
     {
       // A tutorial has the reader set the release by hand; a content test keeps it equal to
