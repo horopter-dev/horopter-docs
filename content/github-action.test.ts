@@ -1,9 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createProcessor } from "@mdx-js/mdx";
-import { frontmatter } from "fumadocs-core/content/md/frontmatter";
-import type { Code, Nodes } from "mdast";
+import type { Code } from "mdast";
 import { describe, expect, it } from "vitest";
+import { codeBlocks, hasMarker } from "#lib/code-blocks.ts";
 import { parse } from "yaml";
 import { readVersions } from "#lib/versions.ts";
 
@@ -27,46 +26,32 @@ const recordActionInputs = [
   "horo-version",
 ];
 
-function codeBlocks(): Code[] {
-  const body = createProcessor({ format: "mdx" }).parse(
-    frontmatter(readFileSync(page, "utf8")).content,
-  );
-  const found: Code[] = [];
-  const walk = (node: Nodes): void => {
-    if (node.type === "code") {
-      found.push(node);
-    } else if ("children" in node) {
-      node.children.forEach(walk);
-    }
-  };
-  walk(body);
-  return found;
-}
-
-function manual(): Code[] {
-  return codeBlocks().filter((block) => (block.meta ?? "").split(/\s+/).includes("manual"));
+function manualBlocks(): Code[] {
+  return codeBlocks(page).filter((block) => hasMarker(block, "manual"));
 }
 
 type Step = { uses?: string; with?: Record<string, unknown> };
 type Workflow = { jobs: Record<string, { strategy?: { matrix?: unknown }; steps: Step[] }> };
 
 function workflows(): Workflow[] {
-  const found = manual()
+  const found = manualBlocks()
     .filter((block) => block.lang === "yaml" && block.value.includes("\njobs:"))
     .map((block) => parse(block.value) as Workflow);
   expect(found.length).toBeGreaterThan(0);
   return found;
 }
 
+function isRecordStep(step: Step): boolean {
+  return step.uses?.startsWith("horopter-dev/record-action@") ?? false;
+}
+
 function recordSteps(workflow: Workflow): Step[] {
-  return Object.values(workflow.jobs).flatMap((job) =>
-    job.steps.filter((step) => step.uses?.startsWith("horopter-dev/record-action@")),
-  );
+  return Object.values(workflow.jobs).flatMap((job) => job.steps.filter(isRecordStep));
 }
 
 describe("the GitHub Action how-to", () => {
   it("passes every workflow the secret and variable its gh steps set", () => {
-    const gh = manual()
+    const gh = manualBlocks()
       .map((block) => block.value)
       .join("\n");
     const secret = /gh secret set (\w+)/.exec(gh)?.[1];
@@ -98,14 +83,14 @@ describe("the GitHub Action how-to", () => {
       .filter((job) => job.strategy?.matrix !== undefined);
     expect(matrixJobs.length).toBeGreaterThan(0);
     for (const job of matrixJobs) {
-      const steps = job.steps.filter((step) => step.uses?.startsWith("horopter-dev/record-action@"));
-      expect(steps.map((step) => step.with?.["name"])).not.toContain(undefined);
+      const names = job.steps.filter(isRecordStep).map((step) => step.with?.["name"]);
+      expect(names).not.toContain(undefined);
     }
   });
 
   it("has CI's setup export every value the page has a reader set", () => {
     const pinned = readVersions();
-    const names = manual()
+    const names = manualBlocks()
       .flatMap((block) => [...block.value.matchAll(/^export ([A-Z][A-Z0-9_]*)=/gm)])
       .map(([, name = ""]) => name)
       .filter((name) => !(name in pinned));

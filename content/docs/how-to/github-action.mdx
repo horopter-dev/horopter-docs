@@ -71,7 +71,8 @@ action's refs name the repository, so changes from different repositories cannot
 The key above may post any subject. Once you know the subjects your workflows record, you can
 narrow it by issuing it with `--subject-pattern`, such as `--subject-pattern 'acme/*'`; see
 [Issue Credentials](./issue-credentials.mdx#issue-a-producer-credential). A post outside the
-pattern is refused with `403`, and the step then runs its command unrecorded, with a warning.
+pattern is refused with `403`, and the step then runs its command unrecorded, with a warning,
+or fails under `strict`.
 
 ### Store the Key and the URL
 
@@ -133,10 +134,11 @@ to fail the step instead, without running the command.
 ### Record a Matrix
 
 Every leg of a matrix runs the same job, so give each leg a `name`. It is appended to the ref,
-and without it the step fails before running anything:
+and without it the step fails before running anything. This is a second workflow,
+`.github/workflows/deploy-regions.yaml`:
 
 ```yaml manual
-name: Deploy
+name: Deploy regions
 on:
   workflow_dispatch:
 permissions:

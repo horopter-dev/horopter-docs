@@ -53,7 +53,8 @@ action_key=$(horoctl admin keys issue --tenant "$TENANT_ID" --role producer \
 HOROPTER_INGRESS_KEY=$action_key horo run --type deployment --subject acme/prod \
   --ref "$REPOSITORY/123/1/deploy" --title "Deploy / deploy" --actor octocat \
   --attr sha=0123456789abcdef0123456789abcdef01234567 --attr git_ref=refs/heads/main \
-  --attr workflow=Deploy --attr "run_url=https://github.com/$REPOSITORY/actions/runs/123/attempts/1" \
+  --attr workflow=Deploy \
+  --attr "run_url=https://github.com/$REPOSITORY/actions/runs/123/attempts/1" \
   -- true
 
 export REF=github/$REPOSITORY/123/1/deploy
