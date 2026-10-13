@@ -66,10 +66,14 @@ export HOROPTER_EGRESS_KEY
 
 Issue one producer key for each repository. Its source, `github/<owner>/<repo>`, records which
 repository posted each event. Its locus, `github`, is the one every GitHub key shares: the
-action's refs name the repository, so changes from different repositories cannot collide.
+action's refs name the repository, so two repositories' changes never collide by accident. The
+shared locus also means any GitHub key can add events to any other repository's changes, whose
+refs are easy to guess; see [Locus](../concepts/what-is-horopter.mdx#locus). The source on each
+event still records which repository's key posted it.
 
-The key above may post any subject. Once you know the subjects your workflows record, you can
-narrow it by issuing it with `--subject-pattern`, such as `--subject-pattern 'acme/*'`; see
+The key above may post any subject. Once you know the subjects your workflows record, narrow it
+by issuing it with `--subject-pattern`, such as `--subject-pattern 'acme/prod*'`, which
+covers both workflows' subjects below; see
 [Issue Credentials](./issue-credentials.mdx#issue-a-producer-credential). A post outside the
 pattern is refused with `403`, and the step then runs its command unrecorded, with a warning,
 or fails under `strict`.
