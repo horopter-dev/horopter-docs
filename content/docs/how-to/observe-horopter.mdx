@@ -21,10 +21,10 @@ signals that mean something is wrong.
 
 ### Read the Logs
 
-Every binary logs JSON to stderr, one object per line. Every request writes one line with
-`"msg": "request"`, except the health probes: its method, route, status, duration and size,
-the tenant and the credential's prefix once a credential resolves, and the error message the
-client received. Keys, request bodies, attributes and client addresses are never logged.
+Every binary logs JSON to stderr, one object per line. Every request writes one line at `INFO`
+with `"msg": "request"`, except `GET /healthz` and `GET /readyz`.
+[The Request Line](#the-request-line) lists its fields. Keys, request bodies, event attributes
+and client addresses are never logged.
 
 Follow the request lines of a compose stack's ingress:
 
@@ -118,6 +118,39 @@ the memory pool too: reads waiting for memory hold their place under the concurr
   span, and log lines written during it carry `trace_id` and `span_id`.
 
 ## Notes
+
+### The Request Line
+
+| field | when | value |
+| --- | --- | --- |
+| `method` | every line | the HTTP method |
+| `route` | every line | the matched pattern, such as `POST /v1/events`; `unmatched` for a 404, or a 405 for a method the path's route does not take |
+| `status` | every line | the status code; `500` for a panic |
+| `duration_ms` | every line | the time to answer, in milliseconds |
+| `bytes` | every line | the size of the response body |
+| `credential` | once a credential resolves | the key's prefix |
+| `tenant` | once a credential bound to a tenant resolves | the tenant |
+| `error` | a `4xx` or `5xx` answered with a JSON error | the message the client received |
+| `subject`, `type` | an event ingress tries to store | the event's |
+| `idempotency_key` | an event ingress tries to store that has one | the event's |
+| `ref` | a stored event, an event posted with a `correlation_ref` that failed to store, and a `POST /v1/admin/refold` whose ref parses | the change's ref |
+| `refold_events`, `refold_altered` | a refold that succeeds | the number of events folded again, and the fields of the change it altered |
+| `query` | an authenticated egress read with a query string | the raw query string |
+| `trace_id`, `span_id` | a line logged while a span is active | the span's ids |
+
+For a replayed idempotency key, `subject`, `type` and `ref` are the original event's.
+
+Every Horopter error is a JSON object. The answers no handler wrote, an unmatched route's 404 or
+405 and a panic's 500, carry no `error`.
+
+Every string value is cut at 1 KiB, and a field that was cut gains `<field>_truncated: true`.
+An error body over 2 MiB is not read at all: its line has `error_truncated: true` and no
+`error`. `credential` is added only once the key resolves, so an unauthenticated caller cannot
+put a prefix of its choosing on the line.
+
+`trace_id` and `span_id` link a line to its trace in a backend such as Tempo. A span is active
+only when tracing is on, so with tracing at its default off no line carries them. Startup and
+telemetry-failure lines never do, tracing on or off: they are logged outside any request.
 
 ### When Telemetry Fails
 
