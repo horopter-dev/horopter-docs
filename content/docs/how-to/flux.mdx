@@ -71,6 +71,12 @@ export HOROPTER_EGRESS_KEY
 Issue one producer key for each cluster. Its source, `flux-$CLUSTER`, is also its locus, so each
 cluster records its own changes: two clusters applying one commit record two.
 
+Issue it without `--subject-pattern`. A Kustomization's changes are recorded with each object it
+applied as the subject, `Kind/name` or `Kind/namespace/name`. A key's pattern is a plain glob
+whose `*` stops at `/`, without the `{a,b}` that egress's `subject` filter accepts, so no single
+pattern covers both. A key narrowed to either has its posts refused with `403`, and the client
+drops them (see [When Horopter Cannot Take an Event](#when-horopter-cannot-take-an-event)).
+
 ### Store the Producer Key
 
 ```bash run
@@ -198,9 +204,48 @@ each Kustomization that applies it finished.
 `horo changes` lists one change for the commit each GitRepository holds, titled by its subject,
 and one for the client's own HelmRelease, titled by the Horopter release it installed.
 
+## What It Records
+
+The client keeps no state. Its idempotency keys, prefixed with the `kube-system` Namespace's
+uid, make posting an event again harmless, so a restart re-posts what it derives from status.
+
+| Flux shows | recorded as | type | lifecycle |
+| --- | --- | --- | --- |
+| a GitRepository artifact at a new Git revision | commit change start | `flux.artifact.new` | `started` |
+| Kustomization Ready=True `ReconciliationSucceeded` | commit change end | `flux.kustomization.succeeded` | `completed` |
+| Kustomization Ready=False, except `DependencyNotReady` and `Progressing` | commit change end and a point | `flux.kustomization.failed` | `failed`, `none` |
+| Kustomization `Progressing` Event | one event per changed object | `flux.kustomization.applied` | `none` |
+| HelmRelease "Running 'install'/'upgrade' action" | release change start | `flux.helmrelease.<action>.started` | `started` |
+| that attempt's chart version, values or generation landing in status | the release change's attempt | `flux.helmrelease.<action>.attempted` | `none` |
+| that revision reaching `status.history`, deployed or failed | release change end | `flux.helmrelease.<action>.succeeded` / `.failed` | `completed`, `failed` |
+| a rollback remediating it | release change end | `flux.helmrelease.<action>.rolled_back` / `.rollback.failed` | `rolled_back`, `failed` |
+| HelmRelease Released=False `PendingRelease` | a point, and the open release change ends | `flux.helmrelease.pending_release` | `none` |
+| HelmRelease `DriftCorrected*`, `Test*`, `Uninstall*` Event | a point | `flux.helmrelease.<reason>` | `none` |
+
+`<action>` is `install` or `upgrade`, and `<reason>` is the Event's reason in snake case, such
+as `drift_corrected`.
+
+### Refs and Titles
+
+A commit change's ref is the Git revision. Its title is the commit subject, from
+source-controller's `NewArtifact` Event; once that Event has expired, it is the branch or tag
+and short SHA, such as `main@b1f2477`.
+
+A release change's ref is `HelmRelease/<namespace>/<name>/<uid>/v<helm revision>`. Its title is
+the chart version, then the app version once the change ends. A retry changes neither chart nor
+values, so it posts no `attempted`, and is titled by its event type until it ends.
+
+## When Horopter Cannot Take an Event
+
+An event Horopter cannot take for now (no answer, a `5xx` or a `429`) is retried with backoff.
+Any other `4xx` is an answer a retry cannot change: the event is logged at `ERROR` and dropped.
+
 ## What It Does Not Record
 
 Commits from Git sources only: an OCIRepository or HelmRepository artifact starts no change.
+The client's other limits, such as what an outage loses, are listed under
+[The Flux Client](https://github.com/horopter-dev/horopter/blob/main/docs/reference/known-limits.md#the-flux-client)
+in Horopter's known limits.
 
 ## What's Next?
 
