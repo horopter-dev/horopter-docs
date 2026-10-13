@@ -9,7 +9,10 @@ const textReference = /\((\/[^)\s]*)\)/g;
 const definitionReference = /^ {0,3}\[(?!\^)[^\]\n]+\]:\s*(\/[^\s]*)/gm;
 const linkTarget = /\]\(([^)\s]+)|^ {0,3}\[(?!\^)[^\]\n]+\]:\s*(\S+)/gm;
 const followable = /^(?:\/|#|[a-z][a-z\d+.-]*:)/i;
-const code = /(`+)[\s\S]*?\1/g;
+// CommonMark: a fence closes at a line of its own character at least as long, or the end of the
+// file; a code span closes at a backtick run of exactly its own length, within one paragraph.
+const fencedCode = /^ {0,3}(([`~])\2{2,})[^\n]*\n[\s\S]*?(?:^ {0,3}\1\2*[ \t]*$|(?![\s\S]))/gm;
+const codeSpan = /(?<!`)(`+)(?!`)(?:(?!\n[ \t]*\n)[\s\S])*?(?<!`)\1(?!`)/g;
 const placeholder = /\0(.*?)\0/gs;
 
 function filesEndingWith(dir: string, extension: string): string[] {
@@ -105,7 +108,7 @@ function relativeLinks(file: string, text: string): string[] {
 
 function checkTextFile(outDir: string, file: string, basePath: string): string[] {
   const text = readFileSync(join(outDir, file), "utf8");
-  const prose = text.replaceAll(code, "");
+  const prose = text.replaceAll(fencedCode, "").replaceAll(codeSpan, "");
   return [
     ...checkReferences(outDir, file, prose.matchAll(textReference), basePath),
     ...checkReferences(outDir, file, prose.matchAll(definitionReference), basePath),
