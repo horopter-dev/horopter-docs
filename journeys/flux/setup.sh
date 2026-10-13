@@ -142,7 +142,8 @@ export HOROPTER_EGRESS_URL=http://localhost:18082
 # A port-forward ends with the pod it reached, so this retries until cleanup stops it.
 (
   while true; do
-    kubectl port-forward --namespace horopter service/horopter-egress 18082:8081 || true
+    kubectl port-forward --namespace "$HOROPTER_NAMESPACE" service/horopter-egress \
+      18082:8081 || true
     sleep 2
   done
 ) > port-forward.log 2>&1 &

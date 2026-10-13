@@ -9,8 +9,8 @@ cleanup: $DOCS_ROOT/journeys/flux/cleanup.sh
 The Flux client, `horopter-flux`, runs beside Flux and watches its objects read-only. It
 records each commit a GitRepository fetches, ended by the first outcome of each Kustomization
 that applies it, and each HelmRelease install or upgrade, ended by its outcome. Nothing is
-configured per release. Each step below is tested against Horopter <HoropterVersion/>, chart
-`horopter-flux` <Version name="HOROPTER_FLUX_CHART_VERSION"/>, and Flux
+configured per release. Each step below but pushing a commit is tested against Horopter
+<HoropterVersion/>, chart `horopter-flux` <Version name="HOROPTER_FLUX_CHART_VERSION"/>, and Flux
 <Version name="FLUX_VERSION"/>.
 
 <Callout type="warn">
@@ -174,7 +174,7 @@ horo changes --locus "flux-$CLUSTER" --since 720h | jq -r '"\(.status)  \(.subje
 
 ```text expect
 completed  GitRepository/flux-system/podinfo  Merge pull request #522 from stefanprodan/release-...
-completed  HelmRelease/flux-system/horopter-flux  v0.13.0
+completed  HelmRelease/flux-system/horopter-flux  v...
 ```
 
 Each line is a change's status, subject and title. A commit's title is its subject as Flux

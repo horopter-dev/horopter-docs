@@ -147,7 +147,8 @@
       extractVersionTemplate: "^v(?<version>.+)$",
     },
     {
-      // The Flux how-to's source: Flux's own example application, at a release tag.
+      // The Flux how-to's source: Flux's own example application, at a release tag. Its read-back
+      // expects the tag's commit subject, so a bump fails the page until that line is updated.
       customType: "regex",
       managerFilePatterns: ["/^versions$/"],
       matchStrings: ["(?m)^PODINFO_TAG=(?<currentValue>\\S+)$"],
