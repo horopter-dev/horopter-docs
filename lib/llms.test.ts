@@ -79,6 +79,7 @@ describe("siteHref", () => {
     ["/", "/horopter-docs/"],
     ["./a.mdx", "/horopter-docs/resolved/./a.mdx"],
     ["../b/index.mdx#x", "/horopter-docs/resolved/../b/index.mdx#x"],
+    ["c.md#y", "/horopter-docs/resolved/./c.md#y"],
     ["https://example.com/x", "https://example.com/x"],
     ["//example.com/x", "//example.com/x"],
     ["#section", "#section"],

@@ -2,12 +2,23 @@ import { DocsBody, DocsDescription, DocsPage, DocsTitle } from "fumadocs-ui/layo
 import { createRelativeLink } from "fumadocs-ui/mdx";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import type { ComponentProps } from "react";
 import { Lockup } from "#components/lockup.tsx";
 import { getMDXComponents } from "#components/mdx.tsx";
+import { fileRelative } from "#lib/links.ts";
 import { source } from "#lib/source.ts";
 
-function isLanding(page: (typeof source)["$inferPage"]): boolean {
+type SourcePage = (typeof source)["$inferPage"];
+
+function isLanding(page: SourcePage): boolean {
   return page.slugs.length === 0;
+}
+
+function pageLink(page: SourcePage) {
+  const RelativeLink = createRelativeLink(source, page);
+  return function PageLink({ href, ...props }: ComponentProps<"a">) {
+    return <RelativeLink href={href && fileRelative(href)} {...props} />;
+  };
 }
 
 export default async function Page(props: PageProps<"/[[...slug]]">) {
@@ -24,7 +35,7 @@ export default async function Page(props: PageProps<"/[[...slug]]">) {
       </DocsTitle>
       <DocsDescription>{page.data.description}</DocsDescription>
       <DocsBody>
-        <MDX components={getMDXComponents({ a: createRelativeLink(source, page) })} />
+        <MDX components={getMDXComponents({ a: pageLink(page) })} />
       </DocsBody>
     </DocsPage>
   );
