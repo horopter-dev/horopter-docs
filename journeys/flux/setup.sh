@@ -38,41 +38,7 @@ PATH=$PWD/bin:$PATH
 
 kind create cluster --name "$cluster" --image "kindest/node:$KUBERNETES_VERSION" --wait 120s
 
-# Horopter's images and charts are private until Go public. The images are pulled here with the
-# runner's login and loaded into the node, where IfNotPresent finds them, as the install
-# how-to's setup does. Delete this at Go public (HOR-15).
-node_platform=$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')
-for image in horopter-ingress horopter-egress horopter-migrate horoctl horopter-flux; do
-  docker pull --quiet --platform "$node_platform" "ghcr.io/horopter-dev/$image:$HOROPTER_VERSION"
-  docker save --platform "$node_platform" "ghcr.io/horopter-dev/$image:$HOROPTER_VERSION" \
-    | kind load image-archive --name "$cluster" /dev/stdin
-done
-
 flux install --version "v$FLUX_VERSION"
-
-# source-controller pulls the horopter-flux chart itself, so while it is private the page's
-# HelmRepository needs the runner's login as a pull Secret. The page's YAML names none, so this
-# adds it to the HelmRepository once the page creates it. Delete this at Go public (HOR-15).
-ghcr_login() {
-  local config=${DOCKER_CONFIG:-$HOME/.docker}/config.json helper auth
-  auth=$(jq -r '.auths["ghcr.io"].auth // empty' "$config")
-  if [[ -n $auth ]]; then
-    base64 --decode <<< "$auth"
-    return
-  fi
-  helper=$(jq -r '.credHelpers["ghcr.io"] // .credsStore // empty' "$config")
-  "docker-credential-$helper" get <<< ghcr.io | jq -r '.Username + ":" + .Secret'
-}
-login=$(ghcr_login)
-kubectl create secret docker-registry ghcr-pull --namespace flux-system \
-  --docker-server ghcr.io --docker-username "${login%%:*}" --docker-password "${login#*:}"
-(
-  until kubectl patch helmrepository horopter --namespace flux-system --type merge \
-    --patch '{"spec":{"secretRef":{"name":"ghcr-pull"}}}' 2> /dev/null; do
-    sleep 1
-  done
-) > helmrepository-patch.log 2>&1 &
-echo "$!" > helmrepository-patch.pid
 
 # Horopter, as Install Horopter in Kubernetes installs it, with that page's names.
 export HOROPTER_NAMESPACE=horopter
