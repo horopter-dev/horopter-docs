@@ -18,6 +18,12 @@ Pages are MDX under `content/docs/`, in five sections — Tutorials, How-to, Ref
 Concepts and Contributing — each a folder with an `index.mdx`. `content/docs/meta.json` sets
 their sidebar order after the landing page.
 
+Reference holds only its `index.mdx` here. Its other pages are `horopter`'s `docs/reference/`
+at the release `HOROPTER_VERSION` pins in `versions`: `pnpm reference` checks them out
+anonymously and copies them in, and `pnpm dev`, `pnpm build` and `pnpm types:check` run it
+first, so each needs network access to GitHub and fails without it. The copies are gitignored;
+change a reference page in `horopter`.
+
 `public/brand/` holds the Horopter lockup and favicons, light and dark: copies of the brand's
 own files, unchanged. Replace them from the source rather than editing them here.
 
@@ -39,7 +45,8 @@ never read `robots.txt`.
 
 `llms.txt` and `llms-full.txt` give the pages as markdown. `lib/llms.ts` resolves their links
 and Cards to site paths as the build writes them, as the HTML pages resolve them, so a page can
-link with a root path or a file-relative one. The build fails on a link left unresolved.
+link with a root path or a file-relative one, `./`, `../` or bare. The build fails on a link left
+unresolved, in a page or in an llms file.
 
 A push to `main` builds and deploys the site with `docs.yaml`.
 

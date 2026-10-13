@@ -112,6 +112,18 @@ describe("checkExport", () => {
     expect(checkExport(dir, basePath)).toEqual([]);
   });
 
+  it("reports a relative link in a page, which resolves against the page's own URL", () => {
+    const html = goodHtml.replace(
+      '<a href="/horopter-docs/">Home</a>',
+      '<a href="configuration.md#horo">Configuration</a><a href="#exit-codes">Exit Codes</a>' +
+        '<a href="mailto:a@example.com">Mail</a>',
+    );
+    expect(checkExport(goodExport({ "reference/horo/index.html": html }), basePath)).toEqual([
+      "reference/horo/index.html links configuration.md#horo, a relative link that " +
+        "resolves against the page's URL",
+    ]);
+  });
+
   it("checks every html page in the export, not only the root", () => {
     const dir = goodExport({ "concepts/index.html": goodHtml.replace("noindex, nofollow", "all") });
     expect(checkExport(dir, basePath)).toEqual([

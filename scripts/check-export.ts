@@ -4,6 +4,7 @@ import { basePath as siteBasePath } from "#lib/site.ts";
 
 const robotsMeta = /<meta\s+name="robots"\s+content="([^"]*)"/i;
 const htmlReference = /\s(?:href|src)="(\/[^"]*)"/g;
+const anchorHref = /<a\s[^>]*?\bhref="([^"]+)"/g;
 const textReference = /\((\/[^)\s]*)\)/g;
 const definitionReference = /^ {0,3}\[(?!\^)[^\]\n]+\]:\s*(\/[^\s]*)/gm;
 const linkTarget = /\]\(([^)\s]+)|^ {0,3}\[(?!\^)[^\]\n]+\]:\s*(\S+)/gm;
@@ -75,12 +76,19 @@ function checkReferences(
   return problems;
 }
 
+function relativeAnchors(page: string, html: string): string[] {
+  return Array.from(html.matchAll(anchorHref), ([, href = ""]) => href)
+    .filter((href) => !followable.test(href))
+    .map((href) => `${page} links ${href}, a relative link that resolves against the page's URL`);
+}
+
 function checkPage(outDir: string, page: string, basePath: string): string[] {
   const html = readFileSync(join(outDir, page), "utf8");
   const noindex = robotsMeta.exec(html)?.[1]?.includes("noindex") ?? false;
   return [
     ...(noindex ? [] : [`${page} has no <meta name="robots"> containing noindex`]),
     ...checkReferences(outDir, page, html.matchAll(htmlReference), basePath),
+    ...relativeAnchors(page, html),
   ];
 }
 
@@ -114,8 +122,8 @@ function checkTextFile(outDir: string, file: string, basePath: string): string[]
  * Checks a static export is fit to publish before the site is indexed: robots.txt
  * disallows all crawling, every page carries a robots noindex meta tag, every
  * root-relative reference in a page or an llms text file sits under the base
- * path and resolves to a file in the export, and an llms text file holds no
- * relative link and no unrendered placeholder. Code in an llms text file is not
+ * path and resolves to a file in the export, no page links relative to its own
+ * URL, and an llms text file holds no relative link and no unrendered placeholder. Code in an llms text file is not
  * checked for links.
  *
  * Args:

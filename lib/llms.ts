@@ -3,6 +3,7 @@ import {
   type PlaceholderData,
   renderPlaceholder,
 } from "fumadocs-core/mdx-plugins/remark-llms.runtime";
+import { fileRelative } from "#lib/links.ts";
 
 function placeholder(data: PlaceholderData): string {
   return `\0${JSON.stringify(data)}\0`;
@@ -80,7 +81,8 @@ export function resolveLinks(markdown: string, resolve: (href: string) => string
  * Args:
  *   href: The href as written.
  *   basePath: The path the site is served under, e.g. `/horopter-docs`.
- *   resolveRelative: Resolves a file-relative href, such as `../tutorials/index.mdx`.
+ *   resolveRelative: Resolves a file-relative href, such as `../tutorials/index.mdx`; a bare
+ *     one, such as `metrics.md`, reaches it as `./metrics.md`.
  *
  * Returns:
  *   A root path under the base path, a resolved file-relative link, or the href unchanged.
@@ -90,8 +92,9 @@ export function siteHref(
   basePath: string,
   resolveRelative: (href: string) => string,
 ): string {
-  if (href.startsWith("./") || href.startsWith("../")) {
-    return resolveRelative(href);
+  const relative = fileRelative(href);
+  if (relative.startsWith("./") || relative.startsWith("../")) {
+    return resolveRelative(relative);
   }
   if (href.startsWith("/") && !href.startsWith("//")) {
     return `${basePath}${href}`;

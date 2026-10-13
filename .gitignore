@@ -8,3 +8,5 @@ next-env.d.ts
 .DS_Store
 .env*.local
 .lastlight/
+# Imported from horopter at the pinned release by `pnpm reference`.
+/content/docs/reference/*.md

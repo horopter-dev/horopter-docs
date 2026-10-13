@@ -7,14 +7,15 @@
     "#*": "./*"
   },
   "scripts": {
-    "build": "fumadocs-mdx && next build && node scripts/check-export.ts out",
-    "dev": "fumadocs-mdx && next dev",
+    "build": "pnpm reference && fumadocs-mdx && next build && node scripts/check-export.ts out",
+    "dev": "pnpm reference && fumadocs-mdx && next dev",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "lint": "oxlint",
+    "reference": "node scripts/import-reference.ts",
     "test": "vitest run",
     "tutorial": "node scripts/tutorial/run.ts",
-    "types:check": "fumadocs-mdx && next typegen && tsc --noEmit"
+    "types:check": "pnpm reference && fumadocs-mdx && next typegen && tsc --noEmit"
   },
   "dependencies": {
     "fumadocs-core": "16.16.2",
