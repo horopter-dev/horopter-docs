@@ -5,14 +5,8 @@ cleanup: test ! -f docker-compose.yaml || docker compose --profile grafana down 
 ---
 
 Run Horopter on your own machine, record one change, and see it twice: in the terminal, and in
-Grafana beside the traffic it caused. Each step below is tested against Horopter
-<HoropterVersion/>: by hand until the project goes public, since CI cannot download its
-release files before then, and in CI after.
-
-<Callout type="warn">
-  Horopter's release files and images are private until the project goes public, so until then
-  these steps work only for someone who can read the `horopter-dev/horopter` repository.
-</Callout>
+Grafana beside the traffic it caused. CI tests each step below against Horopter
+<HoropterVersion/>.
 
 ## Prerequisites
 
