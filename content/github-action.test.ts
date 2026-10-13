@@ -62,7 +62,7 @@ describe("the GitHub Action how-to", () => {
       const steps = recordSteps(workflow);
       expect(steps).toHaveLength(1);
       expect(steps[0]).toMatchObject({
-        uses: "horopter-dev/record-action@v1",
+        uses: "horopter-dev/record-action@v0",
         with: { key: `\${{ secrets.${secret} }}`, url: `\${{ vars.${variable} }}` },
       });
     }

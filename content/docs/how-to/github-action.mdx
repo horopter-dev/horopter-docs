@@ -12,12 +12,6 @@ and name the thing the step changes; the ref, the outcome and what happens when 
 be reached come from `horo run`. Issuing the keys and reading the change back are tested against
 Horopter <HoropterVersion/>; the workflow and the `gh` steps are not.
 
-<Callout type="warn">
-  Horopter and `record-action` are private until the project goes public. Until then
-  `record-action`'s releases are `v0.x`, so `@v1` below does not resolve, and the action cannot
-  download `horo`, so it runs the command unrecorded.
-</Callout>
-
 ## Goal
 
 A deploy step that records a change each time it runs, completed or failed, read back with
@@ -114,7 +108,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: horopter-dev/record-action@v1
+      - uses: horopter-dev/record-action@v0
         with:
           subject: acme/prod
           key: ${{ secrets.HOROPTER_INGRESS_KEY }}
@@ -157,7 +151,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: horopter-dev/record-action@v1
+      - uses: horopter-dev/record-action@v0
         with:
           subject: acme/prod-${{ matrix.region }}
           name: ${{ matrix.region }}
