@@ -1,0 +1,223 @@
+---
+title: Record Deploys from GitHub Actions
+description: Wrap a workflow's deploy step with record-action, and see each run of it as a change.
+setup: $DOCS_ROOT/journeys/github-action/setup.sh
+setup-timeout: 600
+cleanup: $DOCS_ROOT/journeys/github-action/cleanup.sh
+---
+
+`horopter-dev/record-action` runs a workflow step's command under `horo run`: it records the
+change's start, runs the command, and records its outcome. Swap the step's `run:` for the action
+and name the thing the step changes; the ref, the outcome and what happens when Horopter cannot
+be reached come from `horo run`. Issuing the keys and reading the change back are tested against
+Horopter <HoropterVersion/>; the workflow and the `gh` steps are not.
+
+<Callout type="warn">
+  Horopter and `record-action` are private until the project goes public. Until then
+  `record-action`'s releases are `v0.x`, so `@v1` below does not resolve, and the action cannot
+  download `horo`, so it runs the command unrecorded.
+</Callout>
+
+## Goal
+
+A deploy step that records a change each time it runs, completed or failed, read back with
+`horo`.
+
+## Prerequisites
+
+- Horopter running, with ingress reachable from your runners, and a tenant: see
+  [Install Horopter in Kubernetes](./install-kubernetes.mdx).
+- `horoctl` at the same release, with `DATABASE_URL` set to Horopter's database: see
+  [Issue Credentials](./issue-credentials.mdx).
+- `gh`, signed in with access to the repository's settings.
+- `horo`, from [Try Horopter](../tutorials/try-horopter.mdx#install-horo), with egress reachable
+  from your machine.
+- A workflow whose deploy step is a `run:` step.
+
+## Steps
+
+### Set Your Values
+
+Set the repository, your tenant, and where ingress and egress are, in the shell you will use for
+the rest of the page. `horoctl admin tenant list` prints each tenant's id and name.
+
+```bash manual
+export REPOSITORY=acme/api
+export TENANT_ID=<your tenant id>
+export HOROPTER_INGRESS_URL=https://horopter-ingress.example.com
+export HOROPTER_EGRESS_URL=https://horopter-egress.example.com
+```
+
+`HOROPTER_INGRESS_URL` is ingress as your runners reach it, and `HOROPTER_EGRESS_URL` egress as
+your machine reaches it.
+
+### Issue the Keys
+
+The action posts with a producer key, and `horo` reads with a reader key from
+`HOROPTER_EGRESS_KEY`. Each key is printed once, on a line of its own starting `horo_`:
+
+```bash run timeout=180
+PRODUCER_KEY=$(horoctl admin keys issue --tenant "$TENANT_ID" --role producer \
+  --source "github/$REPOSITORY" --locus github | grep -x 'horo_[0-9a-f_]*')
+HOROPTER_EGRESS_KEY=$(horoctl admin keys issue --tenant "$TENANT_ID" --role reader \
+  --source horo | grep -x 'horo_[0-9a-f_]*')
+export HOROPTER_EGRESS_KEY
+```
+
+Issue one producer key for each repository. Its source, `github/<owner>/<repo>`, records which
+repository posted each event. Its locus, `github`, is the one every GitHub key shares: the
+action's refs name the repository, so changes from different repositories cannot collide.
+
+The key above may post any subject. Once you know the subjects your workflows record, you can
+narrow it by issuing it with `--subject-pattern`, such as `--subject-pattern 'acme/*'`; see
+[Issue Credentials](./issue-credentials.mdx#issue-a-producer-credential). A post outside the
+pattern is refused with `403`, and the step then runs its command unrecorded, with a warning.
+
+### Store the Key and the URL
+
+```bash manual
+gh secret set HOROPTER_INGRESS_KEY --repo "$REPOSITORY" --body "$PRODUCER_KEY"
+gh variable set HOROPTER_INGRESS_URL --repo "$REPOSITORY" --body "$HOROPTER_INGRESS_URL"
+```
+
+The key is a secret. The URL is not, so it is a variable, which shows in the workflow's logs.
+
+### Wrap a Deploy Step
+
+Take a deploy step such as this one:
+
+```yaml
+- name: Deploy
+  run: ./deploy.sh prod
+```
+
+Replace its `run:` with the action, and pass the command as its `run` input. This is a whole
+workflow, `.github/workflows/deploy.yaml`:
+
+```yaml manual
+name: Deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: horopter-dev/record-action@v1
+        with:
+          subject: acme/prod
+          key: ${{ secrets.HOROPTER_INGRESS_KEY }}
+          url: ${{ vars.HOROPTER_INGRESS_URL }}
+          run: ./deploy.sh prod
+```
+
+- **`subject`** is the thing the step changes, such as an environment or a cluster, not the
+  repository. It is what you filter changes by when you read them.
+- **`key`** must be passed from the workflow: a composite action cannot read `secrets` itself.
+  Setting `HOROPTER_INGRESS_KEY` in the job's `env:` works too.
+- **`run`** is run by `bash -e`, and the step's exit code is the command's.
+
+The change is titled `<workflow> / <job>`, here `Deploy / deploy`, and carries four attributes
+that lead back to the run: `sha`, `git_ref`, `workflow` and `run_url`.
+
+**Recording never blocks the deploy.** If Horopter cannot be reached, the key is empty, or `horo`
+cannot be downloaded, the command runs anyway, unrecorded, with a warning. Set `strict: "true"`
+to fail the step instead, without running the command.
+
+### Record a Matrix
+
+Every leg of a matrix runs the same job, so give each leg a `name`. It is appended to the ref,
+and without it the step fails before running anything:
+
+```yaml manual
+name: Deploy
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        region: [eu, us]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: horopter-dev/record-action@v1
+        with:
+          subject: acme/prod-${{ matrix.region }}
+          name: ${{ matrix.region }}
+          key: ${{ secrets.HOROPTER_INGRESS_KEY }}
+          url: ${{ vars.HOROPTER_INGRESS_URL }}
+          attributes: |
+            region=${{ matrix.region }}
+          run: ./deploy.sh prod ${{ matrix.region }}
+```
+
+`attributes` adds `key=value` lines after the automatic four. Horopter stores an attribute as
+given and returns it to every reader, so never put a secret or personal data in one; see
+[Attributes](../concepts/attributes.mdx).
+
+### Run the Workflow
+
+```bash manual
+gh workflow run deploy.yaml --repo "$REPOSITORY"
+```
+
+When the step finishes, the run's summary names the change's ref and outcome:
+
+```text
+recorded `github/acme/api/123/1/deploy` (completed)
+```
+
+The ref is the locus, `github`, then `<owner>/<repo>/<run id>/<attempt>/<job>`, with a matrix
+leg's `name` appended. Keep it for the next step:
+
+```bash manual
+export REF=github/acme/api/123/1/deploy
+```
+
+## Verification
+
+Read the change back with the reader key:
+
+```bash run
+horo show --format table "$REF"
+```
+
+```text expect
+ref:      github/acme/api/123/1/deploy
+subject:  acme/prod
+type:     deployment.completed
+status:   completed
+title:    Deploy / deploy
+start:    ...
+duration: ...
+
+OCCURRED...TYPE...TITLE...ID
+...deployment.started...Deploy / deploy...
+...deployment.completed...Deploy / deploy...
+```
+
+To see each deploy on your dashboards, filtered by its subject, follow
+[Show Changes on Your Grafana Dashboards](./grafana.mdx).
+
+## Notes
+
+- **Only `run:` steps.** A step that `uses:` another action cannot be wrapped.
+- **Each re-run is a new change.** The attempt is part of the ref, so re-running a failed job
+  records a second change rather than changing the first.
+- **Runners:** Linux x64 and arm64, and macOS arm64. On any other runner the command runs
+  unrecorded, or the step fails under `strict`.
+- **One key for an organisation.** Instead of a key per repository, issue one with
+  `--source github/<org> --locus github` and store it as an organisation secret with
+  `gh secret set HOROPTER_INGRESS_KEY --org <org> --repos <repo>,<repo>`. Its events then attest
+  only the organisation; the repository is named by the ref alone.
