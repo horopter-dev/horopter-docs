@@ -228,6 +228,15 @@ describe("checkExport", () => {
     ]);
   });
 
+  it("reads a line opening with a backtick span as prose, not an unclosed fence", () => {
+    const dir = goodExport({
+      "llms-full.txt": "```js``` is inline code.\n\nSee [a](./a.mdx).\n",
+    });
+    expect(checkExport(dir, basePath)).toEqual([
+      "llms-full.txt links ./a.mdx, a relative link no reader can follow",
+    ]);
+  });
+
   it("reports a placeholder an llms file left unrendered", () => {
     const dir = goodExport({ "llms-full.txt": 'Text \0{"name":"Card"}\0 more\n' });
     expect(checkExport(dir, basePath)).toEqual([
