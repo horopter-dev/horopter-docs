@@ -197,6 +197,46 @@ describe("checkExport", () => {
     expect(checkExport(dir, basePath)).toEqual([]);
   });
 
+  it("ends a code span only at a backtick run of its own length", () => {
+    const dir = goodExport({
+      "llms-full.txt":
+        "Open a step with `` ```bash run ``, fenced with backticks.\n\n" +
+        "Then read [a](./a.mdx) and `b`.\n",
+    });
+    expect(checkExport(dir, basePath)).toEqual([
+      "llms-full.txt links ./a.mdx, a relative link no reader can follow",
+    ]);
+  });
+
+  it("does not pair a stray backtick with one in a later paragraph", () => {
+    const dir = goodExport({
+      "llms-full.txt": "A lone ` backtick.\n\nSee [a](./a.mdx), then `b`.\n",
+    });
+    expect(checkExport(dir, basePath)).toEqual([
+      "llms-full.txt links ./a.mdx, a relative link no reader can follow",
+    ]);
+  });
+
+  it("strips a fenced block whole, whatever backticks it holds", () => {
+    const dir = goodExport({
+      "llms-full.txt":
+        "````md\nA `` ` `` span and ```bash run\n[a](./a.mdx)\n````\n\n" +
+        "~~~\n[b](./b.mdx) `\n~~~\n\nSee [c](./c.mdx).\n",
+    });
+    expect(checkExport(dir, basePath)).toEqual([
+      "llms-full.txt links ./c.mdx, a relative link no reader can follow",
+    ]);
+  });
+
+  it("reads a line opening with a backtick span as prose, not an unclosed fence", () => {
+    const dir = goodExport({
+      "llms-full.txt": "```js``` is inline code.\n\nSee [a](./a.mdx).\n",
+    });
+    expect(checkExport(dir, basePath)).toEqual([
+      "llms-full.txt links ./a.mdx, a relative link no reader can follow",
+    ]);
+  });
+
   it("reports a placeholder an llms file left unrendered", () => {
     const dir = goodExport({ "llms-full.txt": 'Text \0{"name":"Card"}\0 more\n' });
     expect(checkExport(dir, basePath)).toEqual([

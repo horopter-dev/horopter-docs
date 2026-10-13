@@ -9,7 +9,12 @@ const textReference = /\((\/[^)\s]*)\)/g;
 const definitionReference = /^ {0,3}\[(?!\^)[^\]\n]+\]:\s*(\/[^\s]*)/gm;
 const linkTarget = /\]\(([^)\s]+)|^ {0,3}\[(?!\^)[^\]\n]+\]:\s*(\S+)/gm;
 const followable = /^(?:\/|#|[a-z][a-z\d+.-]*:)/i;
-const code = /(`+)[\s\S]*?\1/g;
+// CommonMark: a backtick fence's info string holds no backtick; a fence closes at a line of its
+// own character at least as long, or the end of the file. A code span closes at a backtick run of
+// exactly its own length, and never across a blank line.
+const fencedCode =
+  /^ {0,3}(([`~])\2{2,})(?:(?<=`)[^`\n]*|(?<=~)[^\n]*)\n.*?(?:^ {0,3}\1\2*[ \t]*$|(?!.))/gms;
+const codeSpan = /(?<!`)(`+)(?!`)(?:(?!\n[ \t]*\n)[\s\S])*?(?<!`)\1(?!`)/g;
 const placeholder = /\0(.*?)\0/gs;
 
 function filesEndingWith(dir: string, extension: string): string[] {
@@ -103,9 +108,14 @@ function relativeLinks(file: string, text: string): string[] {
   return problems;
 }
 
+// Fences go first, so that a fence's backticks never open a code span.
+function withoutCode(markdown: string): string {
+  return markdown.replaceAll(fencedCode, "").replaceAll(codeSpan, "");
+}
+
 function checkTextFile(outDir: string, file: string, basePath: string): string[] {
   const text = readFileSync(join(outDir, file), "utf8");
-  const prose = text.replaceAll(code, "");
+  const prose = withoutCode(text);
   return [
     ...checkReferences(outDir, file, prose.matchAll(textReference), basePath),
     ...checkReferences(outDir, file, prose.matchAll(definitionReference), basePath),
