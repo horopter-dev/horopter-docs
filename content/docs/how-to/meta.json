@@ -2,6 +2,7 @@
   "title": "How-to Guides",
   "pages": [
     "install-kubernetes",
+    "flux",
     "grafana",
     "issue-credentials",
     "observe-horopter",

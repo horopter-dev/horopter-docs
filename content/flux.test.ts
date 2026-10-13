@@ -1,0 +1,56 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { createProcessor } from "@mdx-js/mdx";
+import { frontmatter } from "fumadocs-core/content/md/frontmatter";
+import type { Code, Nodes } from "mdast";
+import { describe, expect, it } from "vitest";
+import { readVersions } from "#lib/versions.ts";
+
+const page = join("content", "docs", "how-to", "flux.mdx");
+const installPage = join("content", "docs", "how-to", "install-kubernetes.mdx");
+const setupScript = join("journeys", "flux", "setup.sh");
+
+function codeBlocks(path: string): Code[] {
+  const body = createProcessor({ format: "mdx" }).parse(
+    frontmatter(readFileSync(path, "utf8")).content,
+  );
+  const found: Code[] = [];
+  const walk = (node: Nodes): void => {
+    if (node.type === "code") {
+      found.push(node);
+    } else if ("children" in node) {
+      node.children.forEach(walk);
+    }
+  };
+  walk(body);
+  return found;
+}
+
+describe("the Flux how-to", () => {
+  it("has CI's setup export every value the page has a reader set", () => {
+    const pinned = readVersions();
+    const manual = codeBlocks(page).filter((block) =>
+      (block.meta ?? "").split(/\s+/).includes("manual"),
+    );
+    const names = manual
+      .flatMap((block) => [...block.value.matchAll(/^export ([A-Z][A-Z0-9_]*)=/gm)])
+      .map(([, name = ""]) => name)
+      .filter((name) => !(name in pinned));
+    const setup = readFileSync(setupScript, "utf8");
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of names) {
+      expect(setup, `setup.sh exports ${name}`).toMatch(new RegExp(`^export ${name}\\b`, "m"));
+    }
+  });
+
+  // setup.sh sources the install how-to's functions from the run block that defines them.
+  it("finds the install how-to's in_cluster and horoctl functions in one run block", () => {
+    const blocks = codeBlocks(installPage).filter(
+      (block) =>
+        (block.meta ?? "").split(/\s+/).includes("run") &&
+        block.value.startsWith("in_cluster() {\n"),
+    );
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.value).toMatch(/^horoctl\(\) \{$/m);
+  });
+});
