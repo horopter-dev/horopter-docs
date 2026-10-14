@@ -1,4 +1,4 @@
-import { Tab, Tabs } from "fumadocs-ui/components/tabs";
+import { Tab, Tabs } from "#components/tabs.tsx";
 import defaultMdxComponents from "fumadocs-ui/mdx";
 import type { MDXComponents } from "mdx/types";
 import { HoropterVersion, Version } from "#components/version.tsx";
