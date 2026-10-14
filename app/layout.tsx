@@ -7,7 +7,6 @@ import "#app/global.css";
 export const metadata: Metadata = {
   title: { default: appName, template: `%s | ${appName}` },
   metadataBase: new URL(siteUrl),
-  robots: { index: false, follow: false },
   icons: {
     icon: [
       { url: `${basePath}/brand/favicon.svg`, type: "image/svg+xml" },

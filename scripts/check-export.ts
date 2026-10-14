@@ -16,6 +16,8 @@ const fencedCode =
   /^ {0,3}(([`~])\2{2,})(?:(?<=`)[^`\n]*|(?<=~)[^\n]*)\n.*?(?:^ {0,3}\1\2*[ \t]*$|(?!.))/gms;
 const codeSpan = /(?<!`)(`+)(?!`)(?:(?!\n[ \t]*\n)[\s\S])*?(?<!`)\1(?!`)/g;
 const placeholder = /\0(.*?)\0/gs;
+// Next writes its not-found page to these paths and marks it noindex itself.
+const notFoundPages = new Set(["404.html", "404/index.html", "_not-found/index.html"]);
 
 function filesEndingWith(dir: string, extension: string): string[] {
   const files: string[] = [];
@@ -55,8 +57,8 @@ function checkRobotsTxt(outDir: string): string[] {
     .map((line) => line.trim())
     .filter((line) => line !== "");
   return wildcardGroupDisallowsAll(lines)
-    ? []
-    : [`robots.txt does not disallow all crawling: ${lines.join(" / ")}`];
+    ? [`robots.txt disallows all crawling: ${lines.join(" / ")}`]
+    : [];
 }
 
 function exportPathFor(reference: string, basePath: string): string {
@@ -91,7 +93,9 @@ function checkPage(outDir: string, page: string, basePath: string): string[] {
   const html = readFileSync(join(outDir, page), "utf8");
   const noindex = robotsMeta.exec(html)?.[1]?.includes("noindex") ?? false;
   return [
-    ...(noindex ? [] : [`${page} has no <meta name="robots"> containing noindex`]),
+    ...(noindex && !notFoundPages.has(page)
+      ? [`${page} has a <meta name="robots"> containing noindex`]
+      : []),
     ...checkReferences(outDir, page, html.matchAll(htmlReference), basePath),
     ...relativeAnchors(page, html),
   ];
@@ -129,11 +133,11 @@ function checkTextFile(outDir: string, file: string, basePath: string): string[]
 }
 
 /**
- * Checks a static export is fit to publish before the site is indexed: robots.txt
- * disallows all crawling, every page carries a robots noindex meta tag, every
- * root-relative reference in a page or an llms text file sits under the base
- * path and resolves to a file in the export, no page links relative to its own
- * URL, and an llms text file holds no relative link and no unrendered
+ * Checks a static export is fit to publish and open to search: robots.txt does
+ * not disallow all crawling, no page but Next's not-found page carries a robots
+ * noindex meta tag, every root-relative reference in a page or an llms text file sits under
+ * the base path and resolves to a file in the export, no page links relative to
+ * its own URL, and an llms text file holds no relative link and no unrendered
  * placeholder. Code in an llms text file is not checked for links.
  *
  * Args:

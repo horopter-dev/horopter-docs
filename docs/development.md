@@ -33,11 +33,9 @@ pnpm build            # static export to out/, then scripts/check-export.ts
 prek run --all-files
 ```
 
-`pnpm build` fails unless every page carries a robots `noindex` meta tag, the export carries a
-`robots.txt` disallowing all crawling, and asset references resolve under the base path. Served
-from the root of `docs.horopter.dev`, `robots.txt` stops crawling; the meta tag also keeps out of
-search results a page reached by a link, and covers a build under a base path, where crawlers
-never read `robots.txt`.
+`pnpm build` fails if the export is closed to search: a `robots.txt` that is missing or disallows
+all crawling, or a page other than Next's not-found page carrying a robots `noindex` meta tag. It also fails
+unless asset references resolve under the base path.
 
 `llms.txt` and `llms-full.txt` give the pages as markdown. `lib/llms.ts` resolves their links
 and Cards to site paths as the build writes them, as the HTML pages resolve them, so a page can
