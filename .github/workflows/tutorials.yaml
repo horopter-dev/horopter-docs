@@ -111,3 +111,22 @@ jobs:
         env:
           PAGE: ${{ matrix.page }}
         run: pnpm --silent tutorial "$PAGE"
+
+  # The other pages need Docker, which macOS runners lack; the install how-to needs none, and
+  # covers the darwin_arm64 tarball and the cask's macOS path, quarantine removal included.
+  install-macos:
+    name: Tutorial on macOS (content/docs/how-to/install-horo.mdx)
+    needs: plan
+    runs-on: macos-26
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          install_args: node pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run content/docs/how-to/install-horo.mdx
+        run: pnpm --silent tutorial content/docs/how-to/install-horo.mdx
