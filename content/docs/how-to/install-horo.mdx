@@ -1,0 +1,30 @@
+---
+title: Install Horopter's Command Line
+description: Install horo, Horopter's command line, with Homebrew, from a release, or with Go.
+---
+
+`horo` is Horopter's command line: it records changes and reads them back. This guide installs
+Horopter <HoropterVersion/>, and CI tests its Homebrew and release download steps against it.
+
+## Goal
+
+`horo` on your machine, at the release you choose.
+
+## Prerequisites
+
+- macOS on Apple silicon, or Linux on x86-64 or arm64.
+- For Homebrew, Homebrew; for the release download, `curl`; for Go, Go.
+
+## Steps
+
+### Choose the Release
+
+Set the release to install:
+
+```bash manual
+export HOROPTER_VERSION=v0.14.1
+```
+
+### Install `horo`
+
+<include>../../snippets/install-horo.mdx</include>

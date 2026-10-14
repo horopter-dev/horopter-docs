@@ -1,6 +1,7 @@
 {
   "title": "How-to Guides",
   "pages": [
+    "install-horo",
     "install-kubernetes",
     "flux",
     "github-action",

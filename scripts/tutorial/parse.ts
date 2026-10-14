@@ -1,22 +1,27 @@
+import { readFileSync } from "node:fs";
+import { dirname, extname, relative, resolve } from "node:path";
 import { createProcessor } from "@mdx-js/mdx";
 import { frontmatter } from "fumadocs-core/content/md/frontmatter";
 import type { Code, Nodes } from "mdast";
 
-export interface Expectation {
+/** Where a block is: its line, and the included file holding it, absent for the page itself. */
+export interface BlockLocation {
   line: number;
+  file?: string;
+}
+
+export interface Expectation extends BlockLocation {
   lines: string[];
 }
 
-export interface Step {
-  line: number;
+export interface Step extends BlockLocation {
   command: string;
   timeout: number;
   retry?: number;
   expect?: Expectation;
 }
 
-export interface ManualBlock {
-  line: number;
+export interface ManualBlock extends BlockLocation {
   lang: string;
 }
 
@@ -30,7 +35,34 @@ export interface Tutorial {
 
 export const defaultTimeout = 120;
 
-const processor = createProcessor({ format: "mdx" });
+const processors = {
+  ".md": createProcessor({ format: "md" }),
+  ".mdx": createProcessor({ format: "mdx" }),
+};
+
+/** A file whose blocks are collected: its path, and how a report names it, absent for the page. */
+interface Source {
+  path: string;
+  shown?: string;
+}
+
+interface LocatedCode {
+  block: Code;
+  source: Source;
+}
+
+/**
+ * Names a block for a report or an error: by its line, and by its file when it is included.
+ *
+ * Args:
+ *   location: The block's line, and its file if an include brought it in.
+ *
+ * Returns:
+ *   "line 4", or "line 4 of content/snippets/install-horo.mdx".
+ */
+export function blockAt({ line, file }: BlockLocation): string {
+  return file === undefined ? `line ${line}` : `line ${line} of ${file}`;
+}
 
 function metaWords(block: Code): string[] {
   return (block.meta ?? "").split(/\s+/);
@@ -40,16 +72,108 @@ function hasMarker(block: Code, marker: string): boolean {
   return metaWords(block).includes(marker);
 }
 
-function lineOf(block: Code): number {
-  return block.position?.start.line ?? 0;
+function locationOf(node: Nodes, source: Source): BlockLocation {
+  const line = node.position?.start.line ?? 0;
+  return source.shown === undefined ? { line } : { line, file: source.shown };
 }
 
-function collectCode(node: Nodes, blocks: Code[]): void {
+function parseFile(source: string, extension: ".md" | ".mdx"): Nodes {
+  // Fumadocs pads the body with one blank line per front-matter line before compiling, so
+  // positions are lines of the file. Parsing the same way tests what is rendered.
+  const matter = frontmatter(source);
+  const padding = "\n".repeat(matter.matter.split("\n").length - 1);
+  return processors[extension].parse(padding + matter.content);
+}
+
+type JsxElement = Extract<Nodes, { type: "mdxJsxFlowElement" | "mdxJsxTextElement" }>;
+
+function isInclude(node: Nodes): node is JsxElement {
+  const jsx = node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement";
+  return jsx && node.name === "include";
+}
+
+function textOf(node: Nodes): string {
+  if ("children" in node) {
+    return node.children.map((child) => textOf(child)).join("");
+  }
+  return "value" in node ? node.value : "";
+}
+
+function attributesOf(element: JsxElement): Map<string, string | null> {
+  const attributes = new Map<string, string | null>();
+  for (const attribute of element.attributes) {
+    const plain = typeof attribute.value === "string" || attribute.value === null;
+    if (attribute.type === "mdxJsxAttribute" && plain) {
+      attributes.set(attribute.name, attribute.value as string | null);
+    }
+  }
+  return attributes;
+}
+
+function readInclude(target: string, includeAt: string): string {
+  try {
+    return readFileSync(target, "utf8");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const shown = relative(process.cwd(), target);
+    throw new Error(`include at ${includeAt} names ${shown}, which cannot be read: ${message}`, {
+      cause: error,
+    });
+  }
+}
+
+function includedTree(
+  content: string,
+  extension: string,
+  attributes: Map<string, string | null>,
+): Nodes {
+  const lang = attributes.get("lang");
+  if (typeof lang === "string" || (extension !== ".md" && extension !== ".mdx")) {
+    const code: Code = {
+      type: "code",
+      lang: typeof lang === "string" ? lang : extension.slice(1),
+      meta: attributes.get("meta") ?? null,
+      value: content,
+      position: { start: { line: 1, column: 1 }, end: { line: 1, column: 1 } },
+    };
+    return code;
+  }
+  return parseFile(content, extension);
+}
+
+// Expands <include> as fumadocs-mdx's remark-include does: the path is relative to the file
+// holding it, or to the working directory with `cwd`; a file that is not Markdown, or any file
+// given a `lang`, is one code block with the element's `meta`.
+function collectInclude(element: JsxElement, source: Source, blocks: LocatedCode[]): void {
+  const specifier = textOf(element);
+  if (specifier === "") {
+    return;
+  }
+  const includeAt = blockAt(locationOf(element, source));
+  const hash = specifier.lastIndexOf("#");
+  if (hash !== -1) {
+    throw new Error(
+      `include at ${includeAt} names section ${specifier.slice(hash + 1)} of ` +
+        `${specifier.slice(0, hash)}; the tutorial harness does not expand sections, ` +
+        "so include the whole file",
+    );
+  }
+  const attributes = attributesOf(element);
+  const base = attributes.has("cwd") ? process.cwd() : dirname(source.path);
+  const target = resolve(base, specifier);
+  const content = readInclude(target, includeAt);
+  const included = { path: target, shown: relative(process.cwd(), target) };
+  collectCode(includedTree(content, extname(target), attributes), included, blocks);
+}
+
+function collectCode(node: Nodes, source: Source, blocks: LocatedCode[]): void {
   if (node.type === "code") {
-    blocks.push(node);
+    blocks.push({ block: node, source });
+  } else if (isInclude(node)) {
+    collectInclude(node, source, blocks);
   } else if ("children" in node) {
     for (const child of node.children) {
-      collectCode(child, blocks);
+      collectCode(child, source, blocks);
     }
   }
 }
@@ -85,7 +209,7 @@ function setupTimeoutOf(data: unknown): number {
   return value;
 }
 
-function secondsOption(block: Code, name: string): number | undefined {
+function secondsOption({ block, source }: LocatedCode, name: string): number | undefined {
   const word = metaWords(block).find((w) => w.startsWith(`${name}=`));
   if (word === undefined) {
     return undefined;
@@ -94,67 +218,73 @@ function secondsOption(block: Code, name: string): number | undefined {
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds <= 0) {
     throw new Error(
-      `run block at line ${lineOf(block)} has ${word}; ${name} takes a positive number of seconds`,
+      `run block at ${blockAt(locationOf(block, source))} has ${word}; ` +
+        `${name} takes a positive number of seconds`,
     );
   }
   return seconds;
 }
 
-function runStep(block: Code): Step {
+function runStep(located: LocatedCode): Step {
+  const { block, source } = located;
+  const location = locationOf(block, source);
   if (block.lang !== "bash") {
     throw new Error(
-      `run block at line ${lineOf(block)} is "${block.lang ?? ""}"; ` +
+      `run block at ${blockAt(location)} is "${block.lang ?? ""}"; ` +
         "run blocks are executed by bash, so mark them ```bash run",
     );
   }
   const step: Step = {
-    line: lineOf(block),
+    ...location,
     command: block.value,
-    timeout: secondsOption(block, "timeout") ?? defaultTimeout,
+    timeout: secondsOption(located, "timeout") ?? defaultTimeout,
   };
-  const retry = secondsOption(block, "retry");
+  const retry = secondsOption(located, "retry");
   if (retry !== undefined) {
     step.retry = retry;
   }
   return step;
 }
 
-function attachExpectation(block: Code, step: Step | undefined): void {
-  const line = lineOf(block);
+function attachExpectation({ block, source }: LocatedCode, step: Step | undefined): void {
+  const location = locationOf(block, source);
   if (step === undefined) {
     throw new Error(
-      `expect block at line ${line} follows no run block; ` +
+      `expect block at ${blockAt(location)} follows no run block; ` +
         "put it after the run block whose output it shows",
     );
   }
   if (step.expect !== undefined) {
     throw new Error(
-      `expect block at line ${line} is the second for the run block at line ${step.line}; ` +
+      `expect block at ${blockAt(location)} is the second for the run block at ` +
+        `${blockAt(step)}; ` +
         "merge it into the first",
     );
   }
-  step.expect = { line, lines: block.value === "" ? [] : block.value.split("\n") };
+  step.expect = { ...location, lines: block.value === "" ? [] : block.value.split("\n") };
 }
 
-function readBlocks(blocks: Code[]): Pick<Tutorial, "steps" | "manual"> {
+function readBlocks(blocks: LocatedCode[]): Pick<Tutorial, "steps" | "manual"> {
   const steps: Step[] = [];
   const manual: ManualBlock[] = [];
   let afterManual = false;
-  for (const block of blocks) {
+  for (const located of blocks) {
+    const { block, source } = located;
     const run = hasMarker(block, "run");
     if (run && hasMarker(block, "manual")) {
       throw new Error(
-        `block at line ${lineOf(block)} is marked both run and manual; a step is one or the other`,
+        `block at ${blockAt(locationOf(block, source))} is marked both run and manual; ` +
+          "a step is one or the other",
       );
     }
     if (run) {
-      steps.push(runStep(block));
+      steps.push(runStep(located));
       afterManual = false;
     } else if (hasMarker(block, "manual")) {
-      manual.push({ line: lineOf(block), lang: block.lang ?? "" });
+      manual.push({ ...locationOf(block, source), lang: block.lang ?? "" });
       afterManual = true;
     } else if (hasMarker(block, "expect") && !afterManual) {
-      attachExpectation(block, steps.at(-1));
+      attachExpectation(located, steps.at(-1));
     }
   }
   return { steps, manual };
@@ -164,10 +294,12 @@ function readBlocks(blocks: Code[]): Pick<Tutorial, "steps" | "manual"> {
  * Reads a tutorial page: each ```bash run block, in page order, with its options and the
  * ```text expect block that follows it; each manual block, which is not run; and the front
  * matter's setup command, setup timeout and cleanup command. An expect block after a manual
- * block is untested with it, and blocks with no marker are ignored.
+ * block is untested with it, and blocks with no marker are ignored. Each <include> is expanded
+ * where it stands, so its blocks are the page's, located by their own file.
  *
  * Args:
  *   source: The page's MDX source, front matter included.
+ *   pagePath: The page's file, which its includes are relative to.
  *
  * Returns:
  *   The page's steps, its manual blocks, its setup command, if any, with its timeout in
@@ -176,15 +308,13 @@ function readBlocks(blocks: Code[]): Pick<Tutorial, "steps" | "manual"> {
  * Raises:
  *   Error: a run block is not bash or has a malformed option, a block is both run and
  *     manual, an expect block has no run block to belong to, setup or cleanup is not a string,
- *     or setup-timeout is not a positive whole number.
+ *     or setup-timeout is not a positive whole number; or an include names a section or a
+ *     file that cannot be read.
  */
-export function parseTutorial(source: string): Tutorial {
-  // Fumadocs pads the body with one blank line per front-matter line before compiling, so
-  // positions are lines of the file. Parsing the same way tests what is rendered.
+export function parseTutorial(source: string, pagePath: string): Tutorial {
   const matter = frontmatter(source);
-  const padding = "\n".repeat(matter.matter.split("\n").length - 1);
-  const blocks: Code[] = [];
-  collectCode(processor.parse(padding + matter.content), blocks);
+  const blocks: LocatedCode[] = [];
+  collectCode(parseFile(source, ".mdx"), { path: resolve(pagePath) }, blocks);
   const tutorial: Tutorial = { ...readBlocks(blocks), setupTimeout: setupTimeoutOf(matter.data) };
   const setup = commandOf(matter.data, "setup");
   if (setup !== undefined) {

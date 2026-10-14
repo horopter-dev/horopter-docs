@@ -78,7 +78,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          pages=$(git grep -lE '^```bash run' -- 'content/*.mdx' | sort | jq -Rnc '[inputs]')
+          # A page's run blocks may come from an included snippet, so a page with an include
+          # is listed too; snippets themselves are not pages.
+          pages=$(git grep -lE '^```bash run|<include' -- 'content/docs/*.mdx' | sort | jq -Rnc '[inputs]')
           echo "pages=$pages" >> "$GITHUB_OUTPUT"
           echo "$pages"
 
@@ -100,6 +102,9 @@ jobs:
         with:
           install_args: node pnpm
       - run: pnpm install --frozen-lockfile
+      # The image has Homebrew but leaves it off PATH; the install snippet's Homebrew tab runs it.
+      - name: Put Homebrew on PATH
+        run: echo /home/linuxbrew/.linuxbrew/bin >> "$GITHUB_PATH"
       - name: Run ${{ matrix.page }}
         shell: bash
         env:

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { readVersions, type Versions } from "#lib/versions.ts";
 import { matchOutput } from "#scripts/tutorial/match.ts";
 import {
+  blockAt,
   defaultTimeout,
   parseTutorial,
   type Step,
@@ -224,7 +225,7 @@ async function runCleanup(
  *   Error: the page cannot be read or parsed, or bash cannot be started.
  */
 export async function runTutorial(pagePath: string, versions: Versions): Promise<TutorialResult> {
-  const tutorial = parseTutorial(readFileSync(pagePath, "utf8"));
+  const tutorial = parseTutorial(readFileSync(pagePath, "utf8"), pagePath);
   const environment = { ...versions, DOCS_ROOT: docsRoot };
   const markers = newMarkers();
   const workDir = mkdtempSync(join(tmpdir(), "tutorial-"));
@@ -259,9 +260,9 @@ function failureLines(pagePath: string, failure: Failure | undefined): string[] 
   const expected =
     step.expect === undefined
       ? []
-      : [`  expected (expect block at line ${step.expect.line}):`, ...indented(step.expect.lines)];
+      : [`  expected (expect block at ${blockAt(step.expect)}):`, ...indented(step.expect.lines)];
   return [
-    `${pagePath}: run block at line ${step.line}: ${reason}`,
+    `${pagePath}: run block at ${blockAt(step)}: ${reason}`,
     "  command:",
     ...indented(step.command.split("\n")),
     ...expected,
@@ -306,7 +307,7 @@ function cleanupLines(pagePath: string, failure: CleanupFailure | undefined): st
  */
 export function formatReport(pagePath: string, result: TutorialResult): string {
   const untested = result.tutorial.manual.map(
-    ({ line, lang }) => `${pagePath}: untested: manual block at line ${line} (${lang})`,
+    (block) => `${pagePath}: untested: manual block at ${blockAt(block)} (${block.lang})`,
   );
   const setupFailed = result.setup?.reason !== undefined;
   return [
