@@ -229,11 +229,9 @@ fails the page. It must be a string; anything else fails the page.
 ### Shared Blocks
 
 Steps that several pages share, such as installing `horo`, live once in `content/snippets/`,
-outside the page tree, and each page includes them where they stand:
-
-```mdx
-<include>../../snippets/install-horo.mdx</include>
-```
+outside the page tree, and each page includes them where they stand, on a line of their own:
+`<include>../../snippets/install-horo.mdx</include>`. CI lists a page by a line starting
+`<include>`, as it does by one starting `` ```bash run ``.
 
 The path is relative to the page, as Fumadocs resolves it. The harness expands each
 `<include>` the same way, so a snippet's `run`, `expect` and `manual` blocks are the including

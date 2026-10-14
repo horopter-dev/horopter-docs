@@ -51,7 +51,7 @@ failing page does not stop the rest. This runs every tutorial page under `conten
 lists them, and does nothing when there are none:
 
 ```bash
-git grep -lE '^```bash run|<include' -- 'content/docs/*.mdx' | xargs -r pnpm --silent tutorial
+git grep -lE '^```bash run|^<include' -- 'content/docs/*.mdx' | xargs -r pnpm --silent tutorial
 ```
 
 ### Bump a Pin
