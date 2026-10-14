@@ -119,7 +119,7 @@ one line naming the page and what is wrong with it.
 ## What CI Runs
 
 The Tutorials workflow, `.github/workflows/tutorials.yaml`, runs on every pull request, weekly,
-on a push to `main` that changes `versions`, and when started by hand. Its three jobs:
+on a push to `main` that changes `versions`, and when started by hand. Its four jobs:
 
 - **Harness fixtures** runs `echo.mdx`, which must pass and list its `manual` block as
   untested; `setup.mdx`, which must pass, its steps reading what its setup script exported;
@@ -127,7 +127,11 @@ on a push to `main` that changes `versions`, and when started by hand. Its three
 - **Plan** checks that `horoctl`'s image exists at the pinned `HOROPTER_VERSION`, so a wrong
   pin fails once, and lists the pages under `content/docs/` with a line starting
   `` ```bash run `` or an `<include>`, whose snippet may hold `run` blocks.
-- **Tutorial** runs each listed page in its own job, with the runner's Homebrew on `PATH`.
+- **Tutorial** runs each listed page in its own job on Linux, with the runner's Homebrew on
+  `PATH`.
+- **Tutorial on macOS** runs the install how-to on a macOS arm64 runner, testing the macOS
+  release download and Homebrew install. It runs no other page: they need Docker, which macOS
+  runners lack.
 
 The weekly run catches drift from outside this repository, such as an image the tutorials pull
 changing under the same tag.
