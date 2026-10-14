@@ -1,0 +1,65 @@
+<Tabs groupId="install-horo" persist items={["Homebrew", "Release download", "Go"]}>
+  <Tab value="Homebrew">
+
+Install it from Horopter's tap, on macOS or Linux. The tap always installs Horopter's latest
+release, whatever `HOROPTER_VERSION` says:
+
+```bash run timeout=300
+brew install horopter-dev/tap/horo
+```
+
+Check the `horo` Homebrew installed:
+
+```bash run
+"$(brew --prefix)/bin/horo" --version
+test "$("$(brew --prefix)/bin/horo" --version --format bare)" = "${HOROPTER_VERSION#v}"
+```
+
+```text expect
+horo v...
+```
+
+The last line checks that the latest release is the one `HOROPTER_VERSION` names. It prints
+nothing either way, and exits with status 1 when they differ: set `HOROPTER_VERSION` to the
+latest release, or install the release you want from the Release download tab. `brew install`
+leaves an installed `horo` as it is; `brew upgrade horopter-dev/tap/horo` moves it to the
+latest release.
+
+  </Tab>
+  <Tab value="Release download">
+
+Download it from the release into `./bin`, and put `./bin` first on your `PATH`:
+
+```bash run
+case "$(uname -s)-$(uname -m)" in
+  Darwin-arm64) platform=darwin_arm64 ;;
+  Linux-x86_64) platform=linux_amd64 ;;
+  Linux-aarch64 | Linux-arm64) platform=linux_arm64 ;;
+  *) echo "no horo build for $(uname -s) $(uname -m)" >&2; exit 1 ;;
+esac
+mkdir -p bin
+curl -fsSL "https://github.com/horopter-dev/horopter/releases/download/$HOROPTER_VERSION/horo_${HOROPTER_VERSION#v}_${platform}.tar.gz" \
+  | tar -xz -C bin horo
+bin/horo --version
+test "$(bin/horo --version --format bare)" = "${HOROPTER_VERSION#v}"
+export PATH="$PWD/bin:$PATH"
+```
+
+```text expect
+horo v...
+```
+
+The `test` line checks that `bin/horo` is the release `HOROPTER_VERSION` names, and prints
+nothing when it is.
+
+  </Tab>
+  <Tab value="Go">
+
+Build it from source at the release, into `$(go env GOPATH)/bin`:
+
+```bash manual
+go install "horopter.dev/horopter/cmd/horo@$HOROPTER_VERSION"
+```
+
+  </Tab>
+</Tabs>

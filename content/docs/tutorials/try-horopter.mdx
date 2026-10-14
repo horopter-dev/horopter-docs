@@ -20,8 +20,8 @@ Grafana beside the traffic it caused. CI tests each step below against Horopter
 ### Choose the Release
 
 Every command below downloads the release this page is tested against, Horopter
-<HoropterVersion/>. Set it in the shell you will use for the rest of the page, in an empty
-directory:
+<HoropterVersion/>, except Homebrew, which always installs the latest release. Set it in the
+shell you will use for the rest of the page, in an empty directory:
 
 ```bash manual
 export HOROPTER_VERSION=v0.14.1
@@ -50,41 +50,12 @@ curl -fsS http://localhost:8081/readyz
 
 ### Install `horo`
 
-`horo` is Horopter's command line. Download it from the same release into `./bin`:
+`horo` is Horopter's command line. Install it with Homebrew, which always installs the latest
+release, or the release this page pins from the release download or with Go:
 
-```bash run
-case "$(uname -s)-$(uname -m)" in
-  Darwin-arm64) platform=darwin_arm64 ;;
-  Linux-x86_64) platform=linux_amd64 ;;
-  Linux-aarch64 | Linux-arm64) platform=linux_arm64 ;;
-  *) echo "no horo build for $(uname -s) $(uname -m)" >&2; exit 1 ;;
-esac
-mkdir -p bin
-curl -fsSL "https://github.com/horopter-dev/horopter/releases/download/$HOROPTER_VERSION/horo_${HOROPTER_VERSION#v}_${platform}.tar.gz" \
-  | tar -xz -C bin horo
-export PATH="$PWD/bin:$PATH"
-horo --version
-test "$(horo --version --format bare)" = "${HOROPTER_VERSION#v}"
-```
+<include>../../snippets/install-horo.mdx</include>
 
-```text expect
-horo v...
-```
-
-The last line checks that the `horo` on your `PATH` is the release this page pins. It prints
-nothing when it is.
-
-You can also install it with Homebrew, once the project is public:
-
-```bash manual
-brew install horopter-dev/tap/horo
-```
-
-or with Go:
-
-```bash manual
-go install "horopter.dev/horopter/cmd/horo@$HOROPTER_VERSION"
-```
+The rest of this page runs `horo` from your `PATH`.
 
 ### Point `horo` at the Stack
 

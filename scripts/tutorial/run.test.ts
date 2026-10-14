@@ -400,6 +400,41 @@ describe("formatReport", () => {
     );
   });
 
+  it("names an included block by its file and line, and its expect block likewise", () => {
+    const file = "content/snippets/install-horo.mdx";
+    const report = formatReport("page.mdx", {
+      tutorial,
+      failure: {
+        step: {
+          line: 12,
+          file,
+          command: "false",
+          timeout: 120,
+          expect: { line: 16, file, lines: ["x"] },
+        },
+        reason: "exited with status 1",
+        output: [],
+      },
+    });
+    expect(report.split("\n").slice(0, 1)).toEqual([
+      `page.mdx: run block at line 12 of ${file}: exited with status 1`,
+    ]);
+    expect(report).toContain(`  expected (expect block at line 16 of ${file}):\n`);
+  });
+
+  it("names an included manual block by its file and line", () => {
+    const report = formatReport("page.mdx", {
+      tutorial: {
+        steps: [],
+        setupTimeout: 120,
+        manual: [{ line: 30, file: "content/snippets/install-horo.mdx", lang: "bash" }],
+      },
+    });
+    expect(report).toContain(
+      "page.mdx: untested: manual block at line 30 of content/snippets/install-horo.mdx (bash)\n",
+    );
+  });
+
   it("says a page passed, and lists each manual block as untested", () => {
     const report = formatReport("page.mdx", {
       tutorial: {
@@ -514,6 +549,31 @@ describe("checkTutorial", () => {
         `${path}: run block at line 1 is "sh"; run blocks are executed by bash, ` +
         "so mark them ```bash run\n",
     });
+  });
+
+  it("runs a block from an included file, and names that file when it fails", async () => {
+    const dir = scratchDir();
+    writeFileSync(join(dir, "s.mdx"), ["", `${fence}bash run`, "exit 3", fence].join("\n"));
+    writeFileSync(join(dir, "page.mdx"), "<include>s.mdx</include>");
+    const path = join(dir, "page.mdx");
+    const { passed, report } = await checkTutorial(path, versions);
+    expect(passed).toBe(false);
+    expect(report).toMatch(
+      new RegExp(
+        `^${RegExp.escape(path)}: run block at line 2 of \\S*s\\.mdx: exited with status 3`,
+      ),
+    );
+  });
+
+  it("names the page and the missing file when an include cannot be read", async () => {
+    const path = page(["<include>gone.mdx</include>"]);
+    const { passed, report } = await checkTutorial(path, versions);
+    expect(passed).toBe(false);
+    expect(report).toMatch(
+      new RegExp(
+        `^${RegExp.escape(path)}: include at line 1 names \\S*gone\\.mdx, which cannot be read`,
+      ),
+    );
   });
 
   it("names the page when it does not exist", async () => {

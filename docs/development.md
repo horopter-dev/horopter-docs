@@ -11,7 +11,8 @@ pnpm dev             # http://localhost:3000
 ```
 
 Pages are MDX under `content/docs/`, in five sections — Tutorials, How-to, Reference,
-Concepts and Contributing — each a folder with an `index.mdx`. `content/docs/meta.json` sets
+Concepts and Contributing — each a folder with an `index.mdx`. Blocks several pages share,
+included with `<include>`, are under `content/snippets/`. `content/docs/meta.json` sets
 their sidebar order after the landing page.
 
 Reference holds only its `index.mdx` here. Its other pages are `horopter`'s `docs/reference/`
