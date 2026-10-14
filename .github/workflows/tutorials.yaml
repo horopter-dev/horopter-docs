@@ -80,7 +80,8 @@ jobs:
           set -euo pipefail
           # A page's run blocks may come from an included snippet, so a page with an include
           # is listed too; snippets themselves are not pages.
-          pages=$(git grep -lE '^```bash run|<include' -- 'content/docs/*.mdx' | sort | jq -Rnc '[inputs]')
+          pages=$(git grep -lE '^```bash run|<include' -- 'content/docs/*.mdx' \
+            | sort | jq -Rnc '[inputs]')
           echo "pages=$pages" >> "$GITHUB_OUTPUT"
           echo "$pages"
 

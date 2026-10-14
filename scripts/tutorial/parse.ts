@@ -43,7 +43,7 @@ const processors = {
 /** A file whose blocks are collected: its path, and how a report names it, absent for the page. */
 interface Source {
   path: string;
-  shown?: string;
+  reportedAs?: string;
 }
 
 interface LocatedCode {
@@ -74,13 +74,14 @@ function hasMarker(block: Code, marker: string): boolean {
 
 function locationOf(node: Nodes, source: Source): BlockLocation {
   const line = node.position?.start.line ?? 0;
-  return source.shown === undefined ? { line } : { line, file: source.shown };
+  return source.reportedAs === undefined ? { line } : { line, file: source.reportedAs };
 }
 
-function parseFile(source: string, extension: ".md" | ".mdx"): Nodes {
+type FrontMatter = ReturnType<typeof frontmatter>;
+
+function parseFile(matter: FrontMatter, extension: ".md" | ".mdx"): Nodes {
   // Fumadocs pads the body with one blank line per front-matter line before compiling, so
   // positions are lines of the file. Parsing the same way tests what is rendered.
-  const matter = frontmatter(source);
   const padding = "\n".repeat(matter.matter.split("\n").length - 1);
   return processors[extension].parse(padding + matter.content);
 }
@@ -102,23 +103,23 @@ function textOf(node: Nodes): string {
 function attributesOf(element: JsxElement): Map<string, string | null> {
   const attributes = new Map<string, string | null>();
   for (const attribute of element.attributes) {
-    const plain = typeof attribute.value === "string" || attribute.value === null;
-    if (attribute.type === "mdxJsxAttribute" && plain) {
-      attributes.set(attribute.name, attribute.value as string | null);
+    const { value } = attribute;
+    if (attribute.type === "mdxJsxAttribute" && (typeof value === "string" || value === null)) {
+      attributes.set(attribute.name, value);
     }
   }
   return attributes;
 }
 
-function readInclude(target: string, includeAt: string): string {
+function readInclude(included: Required<Source>, includeAt: string): string {
   try {
-    return readFileSync(target, "utf8");
+    return readFileSync(included.path, "utf8");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const shown = relative(process.cwd(), target);
-    throw new Error(`include at ${includeAt} names ${shown}, which cannot be read: ${message}`, {
-      cause: error,
-    });
+    throw new Error(
+      `include at ${includeAt} names ${included.reportedAs}, which cannot be read: ${message}`,
+      { cause: error },
+    );
   }
 }
 
@@ -138,7 +139,7 @@ function includedTree(
     };
     return code;
   }
-  return parseFile(content, extension);
+  return parseFile(frontmatter(content), extension);
 }
 
 // Expands <include> as fumadocs-mdx's remark-include does: the path is relative to the file
@@ -146,10 +147,10 @@ function includedTree(
 // given a `lang`, is one code block with the element's `meta`.
 function collectInclude(element: JsxElement, source: Source, blocks: LocatedCode[]): void {
   const specifier = textOf(element);
-  if (specifier === "") {
-    return;
-  }
   const includeAt = blockAt(locationOf(element, source));
+  if (specifier === "") {
+    throw new Error(`include at ${includeAt} names no file; put the file's path inside it`);
+  }
   const hash = specifier.lastIndexOf("#");
   if (hash !== -1) {
     throw new Error(
@@ -161,8 +162,8 @@ function collectInclude(element: JsxElement, source: Source, blocks: LocatedCode
   const attributes = attributesOf(element);
   const base = attributes.has("cwd") ? process.cwd() : dirname(source.path);
   const target = resolve(base, specifier);
-  const content = readInclude(target, includeAt);
-  const included = { path: target, shown: relative(process.cwd(), target) };
+  const included = { path: target, reportedAs: relative(process.cwd(), target) };
+  const content = readInclude(included, includeAt);
   collectCode(includedTree(content, extname(target), attributes), included, blocks);
 }
 
@@ -314,7 +315,7 @@ function readBlocks(blocks: LocatedCode[]): Pick<Tutorial, "steps" | "manual"> {
 export function parseTutorial(source: string, pagePath: string): Tutorial {
   const matter = frontmatter(source);
   const blocks: LocatedCode[] = [];
-  collectCode(parseFile(source, ".mdx"), { path: resolve(pagePath) }, blocks);
+  collectCode(parseFile(matter, ".mdx"), { path: resolve(pagePath) }, blocks);
   const tutorial: Tutorial = { ...readBlocks(blocks), setupTimeout: setupTimeoutOf(matter.data) };
   const setup = commandOf(matter.data, "setup");
   if (setup !== undefined) {

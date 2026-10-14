@@ -47,11 +47,11 @@ failing run with an `[ELIFECYCLE] Command failed` line, left out of the reports 
 ### Run Every Tutorial
 
 `pnpm tutorial` takes several pages, runs them one at a time, and reports on each, so one
-failing page does not stop the rest. This runs every tutorial page under `content/`, as CI
+failing page does not stop the rest. This runs every tutorial page under `content/docs/`, as CI
 lists them, and does nothing when there are none:
 
 ```bash
-git grep -lE '^```bash run' -- 'content/*.mdx' | xargs -r pnpm --silent tutorial
+git grep -lE '^```bash run|<include' -- 'content/docs/*.mdx' | xargs -r pnpm --silent tutorial
 ```
 
 ### Bump a Pin
@@ -93,7 +93,8 @@ scripts/tutorial/fixtures/wrong-expect.mdx: run block at line 14: line 1: expect
 ```
 
 The first line names the page, the `run` block that failed by the line its fence is on, and
-why. Below it are the block's command, its `expect` block with that block's line, and what the
+why. A block from an included snippet is named by its line in the snippet, as
+`run block at line N of content/snippets/…`, and so is its `expect` block. Below it are the block's command, its `expect` block with that block's line, and what the
 block printed. The report names only the first failing block. The reason is one of:
 
 - `line N: expected "…", got "…"`: an output line does not match.
@@ -111,7 +112,7 @@ A page with `setup:` reports it first: `page: setup passed`, or, when it failed,
 and what it printed. A failed setup reports no `run` block, since none ran.
 
 A line `page: untested: manual block at line N (lang)` lists each `manual` block, pass or
-fail. A failing `cleanup:` adds `page: cleanup` and its reason, with the command and its
+fail, with `of` and the snippet after the line number for one from a snippet. A failing `cleanup:` adds `page: cleanup` and its reason, with the command and its
 output. A page the harness cannot read, such as one with a `run` block that is not bash, gets
 one line naming the page and what is wrong with it.
 
@@ -124,8 +125,9 @@ on a push to `main` that changes `versions`, and when started by hand. Its three
   untested; `setup.mdx`, which must pass, its steps reading what its setup script exported;
   and `wrong-expect.mdx`, which must fail naming its second `run` block.
 - **Plan** checks that `horoctl`'s image exists at the pinned `HOROPTER_VERSION`, so a wrong
-  pin fails once, and lists the pages under `content/` with a line starting `` ```bash run ``.
-- **Tutorial** runs each listed page in its own job.
+  pin fails once, and lists the pages under `content/docs/` with a line starting
+  `` ```bash run `` or an `<include>`, whose snippet may hold `run` blocks.
+- **Tutorial** runs each listed page in its own job, with the runner's Homebrew on `PATH`.
 
 The weekly run catches drift from outside this repository, such as an image the tutorials pull
 changing under the same tag.

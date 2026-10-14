@@ -13,8 +13,9 @@ test "$("$(brew --prefix)/bin/horo" --version --format bare)" = "${HOROPTER_VERS
 horo v...
 ```
 
-The tap installs Horopter's latest release. The last line checks that it is the release
-`HOROPTER_VERSION` names, and prints nothing when it is.
+The tap installs Horopter's latest release, and `brew upgrade horopter-dev/tap/horo` moves an
+installed `horo` to it. The last line checks that it is the release `HOROPTER_VERSION` names,
+and prints nothing when it is.
 
   </Tab>
   <Tab value="Release download">

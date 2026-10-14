@@ -435,6 +435,13 @@ describe("parseTutorial with <include>", () => {
     );
   });
 
+  it("fails on an include that names no file", () => {
+    const root = tree({ "page.mdx": ["<include></include>"] });
+    expect(() => parsePage(root, "page.mdx")).toThrow(
+      "include at line 1 names no file; put the file's path inside it",
+    );
+  });
+
   it("fails on an include of a section, which the harness does not expand", () => {
     const root = tree({
       "page.mdx": ["<include>s.mdx#install</include>"],

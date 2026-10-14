@@ -133,8 +133,8 @@ line" below.
 A tutorial's own code blocks are its test. The harness in `scripts/tutorial/` parses a page
 with the MDX parser the site uses, so what it runs is what the reader sees. A marker is a word
 after a block's language, on the opening fence. CI finds tutorials by a line starting
-`` ```bash run ``, so open every `run` block with exactly that, options after it, fenced with
-backticks and not indented.
+`` ```bash run ``, or an `<include>`, so open every `run` block with exactly that, options
+after it, fenced with backticks and not indented.
 
 A block with no marker is shown and never run, and the report does not mention it. A step the
 reader is asked to do is therefore either `run` or `manual`, never unmarked, so the report
@@ -225,6 +225,21 @@ It runs in the directory the session started in, with a 120-second limit, in its
 does not see variables setup or the steps exported, but sees the pins and `$DOCS_ROOT`. It runs
 after a failed setup too, so it must cope with a world setup only half built. A failing cleanup
 fails the page. It must be a string; anything else fails the page.
+
+### Shared Blocks
+
+Steps that several pages share, such as installing `horo`, live once in `content/snippets/`,
+outside the page tree, and each page includes them where they stand:
+
+```mdx
+<include>../../snippets/install-horo.mdx</include>
+```
+
+The path is relative to the page, as Fumadocs resolves it. The harness expands each
+`<include>` the same way, so a snippet's `run`, `expect` and `manual` blocks are the including
+page's, and the report names one as `line N of content/snippets/install-horo.mdx`. It does not
+expand an include of one section, `file.mdx#section`, and fails the page on one; include the
+whole file. A snippet sets no pins: each page that includes it sets the ones it reads.
 
 ## Steps That Cannot Run
 
