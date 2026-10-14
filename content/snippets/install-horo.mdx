@@ -6,6 +6,11 @@ release, whatever `HOROPTER_VERSION` says:
 
 ```bash run timeout=300
 brew install horopter-dev/tap/horo
+```
+
+Check the `horo` Homebrew installed:
+
+```bash run
 "$(brew --prefix)/bin/horo" --version
 test "$("$(brew --prefix)/bin/horo" --version --format bare)" = "${HOROPTER_VERSION#v}"
 ```
