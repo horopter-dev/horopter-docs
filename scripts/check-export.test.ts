@@ -7,7 +7,6 @@ import { checkExport } from "#scripts/check-export.ts";
 const basePath = "/horopter-docs";
 
 const goodHtml = `<!DOCTYPE html><html><head>
-<meta name="robots" content="noindex, nofollow"/>
 <link rel="stylesheet" href="/horopter-docs/_next/static/css/a.css"/>
 <script src="/horopter-docs/_next/static/chunks/b.js" async=""></script>
 </head><body><a href="/horopter-docs/">Home</a><a href="https://example.com/">x</a></body></html>`;
@@ -33,7 +32,7 @@ function exportDir(files: Record<string, string>): string {
 function goodExport(overrides: Record<string, string> = {}): string {
   return exportDir({
     "index.html": goodHtml,
-    "robots.txt": "User-Agent: *\nDisallow: /\n",
+    "robots.txt": "User-Agent: *\nAllow: /\n",
     "_next/static/css/a.css": "",
     "_next/static/chunks/b.js": "",
     ...overrides,
@@ -41,7 +40,7 @@ function goodExport(overrides: Record<string, string> = {}): string {
 }
 
 describe("checkExport", () => {
-  it("accepts an export that is not indexed and whose assets resolve under the base path", () => {
+  it("accepts an export open to search whose assets resolve under the base path", () => {
     expect(checkExport(goodExport(), basePath)).toEqual([]);
   });
 
@@ -54,36 +53,39 @@ describe("checkExport", () => {
     expect(checkExport(dir, basePath)).toEqual(["robots.txt is missing"]);
   });
 
-  it("reports a robots.txt that does not disallow everything", () => {
-    const dir = goodExport({ "robots.txt": "User-Agent: *\nAllow: /\n" });
+  it("reports a robots.txt that disallows all crawling", () => {
+    const dir = goodExport({ "robots.txt": "User-Agent: *\nDisallow: /\n" });
     expect(checkExport(dir, basePath)).toEqual([
-      "robots.txt does not disallow all crawling: User-Agent: * / Allow: /",
+      "robots.txt disallows all crawling: User-Agent: * / Disallow: /",
     ]);
   });
 
-  it("reports a robots.txt that disallows only one crawler", () => {
+  it("reports a robots.txt whose wildcard group shares Disallow: / with a named crawler", () => {
+    const dir = goodExport({ "robots.txt": "User-Agent: Bot\nUser-Agent: *\nDisallow: /\n" });
+    expect(checkExport(dir, basePath)).toEqual([
+      "robots.txt disallows all crawling: User-Agent: Bot / User-Agent: * / Disallow: /",
+    ]);
+  });
+
+  it("accepts a robots.txt that disallows only one crawler", () => {
     const dir = goodExport({ "robots.txt": "User-Agent: Googlebot\nDisallow: /\n" });
-    expect(checkExport(dir, basePath)).toEqual([
-      "robots.txt does not disallow all crawling: User-Agent: Googlebot / Disallow: /",
+    expect(checkExport(dir, basePath)).toEqual([]);
+  });
+
+  it("reports a page with a robots noindex meta tag", () => {
+    const html = goodHtml.replace("<head>", '<head><meta name="robots" content="noindex"/>');
+    expect(checkExport(goodExport({ "index.html": html }), basePath)).toEqual([
+      'index.html has a <meta name="robots"> containing noindex',
     ]);
   });
 
-  it("reports a robots.txt whose Disallow: / belongs to another crawler's group", () => {
-    const dir = goodExport({
-      "robots.txt": "User-Agent: *\nAllow: /\n\nUser-Agent: Bot\nDisallow: /\n",
-    });
-    expect(checkExport(dir, basePath)).toEqual([
-      "robots.txt does not disallow all crawling: " +
-        "User-Agent: * / Allow: / / User-Agent: Bot / Disallow: /",
-    ]);
-  });
-
-  it("reports a page without a robots noindex meta tag", () => {
-    const dir = goodExport({ "index.html": goodHtml.replace("noindex, nofollow", "index") });
-    expect(checkExport(dir, basePath)).toEqual([
-      'index.html has no <meta name="robots"> containing noindex',
-    ]);
-  });
+  it.each(["404.html", "404/index.html", "_not-found/index.html"])(
+    "accepts noindex on Next's not-found page at %s",
+    (page) => {
+      const html = goodHtml.replace("<head>", '<head><meta name="robots" content="noindex"/>');
+      expect(checkExport(goodExport({ [page]: html }), basePath)).toEqual([]);
+    },
+  );
 
   it("reports an asset referenced outside the base path", () => {
     const html = goodHtml.replace(
@@ -125,9 +127,10 @@ describe("checkExport", () => {
   });
 
   it("checks every html page in the export, not only the root", () => {
-    const dir = goodExport({ "concepts/index.html": goodHtml.replace("noindex, nofollow", "all") });
+    const html = goodHtml.replace("<head>", '<head><meta name="robots" content="noindex"/>');
+    const dir = goodExport({ "concepts/index.html": html });
     expect(checkExport(dir, basePath)).toEqual([
-      'concepts/index.html has no <meta name="robots"> containing noindex',
+      'concepts/index.html has a <meta name="robots"> containing noindex',
     ]);
   });
 
@@ -250,7 +253,7 @@ describe("checkExport", () => {
   });
 
   it("reports an export with no html pages", () => {
-    const dir = exportDir({ "robots.txt": "User-Agent: *\nDisallow: /\n" });
+    const dir = exportDir({ "robots.txt": "User-Agent: *\nAllow: /\n" });
     expect(checkExport(dir, basePath)).toEqual(["the export holds no html pages"]);
   });
 });
