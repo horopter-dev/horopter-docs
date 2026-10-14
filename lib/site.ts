@@ -5,7 +5,7 @@ export const siteUrl = process.env.SITE_URL ?? "https://docs.horopter.dev";
 
 export const appName = "Horopter";
 
-export const gitConfig = {
-  user: "horopter-dev",
-  repo: "horopter-docs",
+export const productRepo = {
+  owner: "horopter-dev",
+  name: "horopter",
 };
