@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 import { basePath } from "./lib/site.ts";
 
 const config: NextConfig = {
+  agentRules: false,
   reactStrictMode: true,
   output: "export",
   basePath,
