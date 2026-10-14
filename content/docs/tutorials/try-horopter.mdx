@@ -20,8 +20,8 @@ Grafana beside the traffic it caused. CI tests each step below against Horopter
 ### Choose the Release
 
 Every command below downloads the release this page is tested against, Horopter
-<HoropterVersion/>. Set it in the shell you will use for the rest of the page, in an empty
-directory:
+<HoropterVersion/>, except Homebrew, which always installs the latest release. Set it in the
+shell you will use for the rest of the page, in an empty directory:
 
 ```bash manual
 export HOROPTER_VERSION=v0.14.1
@@ -50,7 +50,8 @@ curl -fsS http://localhost:8081/readyz
 
 ### Install `horo`
 
-`horo` is Horopter's command line. Install it with Homebrew, from the release, or with Go:
+`horo` is Horopter's command line. Install it with Homebrew, which always installs the latest
+release, or the release this page pins from the release download or with Go:
 
 <include>../../snippets/install-horo.mdx</include>
 

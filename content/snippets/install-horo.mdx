@@ -1,7 +1,8 @@
 <Tabs groupId="install-horo" persist items={["Homebrew", "Release download", "Go"]}>
   <Tab value="Homebrew">
 
-Install it from Horopter's tap, on macOS or Linux:
+Install it from Horopter's tap, on macOS or Linux. The tap always installs Horopter's latest
+release, whatever `HOROPTER_VERSION` says:
 
 ```bash run timeout=300
 brew install horopter-dev/tap/horo
@@ -13,9 +14,11 @@ test "$("$(brew --prefix)/bin/horo" --version --format bare)" = "${HOROPTER_VERS
 horo v...
 ```
 
-The tap installs Horopter's latest release, and `brew upgrade horopter-dev/tap/horo` moves an
-installed `horo` to it. The last line checks that it is the release `HOROPTER_VERSION` names,
-and prints nothing when it is.
+The last line checks that the latest release is the one `HOROPTER_VERSION` names. It prints
+nothing either way, and exits with status 1 when they differ: set `HOROPTER_VERSION` to the
+latest release, or install the release you want from the Release download tab. `brew install`
+leaves an installed `horo` as it is; `brew upgrade horopter-dev/tap/horo` moves it to the
+latest release.
 
   </Tab>
   <Tab value="Release download">
