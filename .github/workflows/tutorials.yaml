@@ -22,6 +22,7 @@ jobs:
   fixtures:
     name: Harness fixtures
     runs-on: ubuntu-26.04
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
@@ -54,6 +55,7 @@ jobs:
   plan:
     name: Plan
     runs-on: ubuntu-26.04
+    timeout-minutes: 5
     permissions:
       contents: read
     outputs:
@@ -89,6 +91,7 @@ jobs:
     name: Tutorial
     needs: plan
     runs-on: ubuntu-26.04
+    timeout-minutes: 15
     permissions:
       contents: read
     strategy:
@@ -118,6 +121,7 @@ jobs:
     name: Tutorial on macOS (content/docs/how-to/install-horo.mdx)
     needs: plan
     runs-on: macos-26
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
