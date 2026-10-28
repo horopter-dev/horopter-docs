@@ -2,4 +2,4 @@
 # Read by CI through jdx/mise-action, so a runner and a dev box run the same versions.
 node = "26.12.1"
 pnpm = "12.14.0"
-prek = "0.5.6"
+prek = "0.5.7"
