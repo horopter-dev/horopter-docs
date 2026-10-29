@@ -60,7 +60,7 @@ Add these to Grafana's environment, with your reader key, and restart Grafana, w
 Infinity as it starts:
 
 ```bash manual
-GF_PLUGINS_PREINSTALL_SYNC=yesoreyeram-infinity-datasource@4.1.2
+GF_PLUGINS_PREINSTALL_SYNC=yesoreyeram-infinity-datasource@4.1.3
 HOROPTER_READER_KEY=<your reader key>
 ```
 
@@ -102,7 +102,7 @@ reads the key into its environment, and its sidecar provisions the data source:
 ```yaml manual
 grafana:
   plugins:
-    - yesoreyeram-infinity-datasource@4.1.2
+    - yesoreyeram-infinity-datasource@4.1.3
   envValueFrom:
     HOROPTER_READER_KEY:
       secretKeyRef:
