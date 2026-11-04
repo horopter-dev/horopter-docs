@@ -33,6 +33,12 @@
       minimumReleaseAge: "14 days",
     },
     {
+      // mise.toml's pins sit on adjacent lines, so two pull requests for it conflict as soon
+      // as one merges, and the other waits a day for the next run to rebase it.
+      matchManagers: ["mise"],
+      groupName: "mise tools",
+    },
+    {
       // Action SHAs are Dependabot's; only runs-on images are Renovate's.
       matchManagers: ["github-actions"],
       matchDatasources: ["!github-runners"],
