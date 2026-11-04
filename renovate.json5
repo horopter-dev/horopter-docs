@@ -34,7 +34,7 @@
     },
     {
       // mise.toml's pins sit on adjacent lines, so two pull requests for it conflict as soon
-      // as one merges, and the other waits a day for the next run to rebase it.
+      // as one merges, and the other waits for the next run to rebase it.
       matchManagers: ["mise"],
       groupName: "mise tools",
     },
