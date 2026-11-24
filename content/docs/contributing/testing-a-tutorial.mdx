@@ -131,7 +131,8 @@ on a push to `main` that changes `versions`, and when started by hand. Its four 
   `PATH`.
 - **Tutorial on macOS** runs the install how-to on a macOS arm64 runner, testing the macOS
   release download and Homebrew install. It runs no other page: they need Docker, which macOS
-  runners lack.
+  runners lack. It is skipped on the weekly run, where GitHub has cancelled it for want of a
+  macOS runner; the Linux job runs the same Homebrew install weekly.
 
 The weekly run catches drift from outside this repository, such as an image the tutorials pull
 changing under the same tag.

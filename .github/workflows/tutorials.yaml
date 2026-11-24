@@ -120,6 +120,7 @@ jobs:
   install-macos:
     name: Tutorial on macOS (content/docs/how-to/install-horo.mdx)
     needs: plan
+    if: github.event_name != 'schedule'
     runs-on: macos-26
     timeout-minutes: 5
     permissions:
